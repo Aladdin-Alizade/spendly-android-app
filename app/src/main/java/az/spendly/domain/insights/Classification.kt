@@ -208,3 +208,73 @@ fun emergencyFund(data: FinanceData, month: MonthKey, months: Int): EmergencyFun
         sampleMonths = history.size,
     )
 }
+
+/* ------------------------------------------------------------------ *
+ * The figures behind the plain-language readings
+ * ------------------------------------------------------------------ */
+
+data class Rigidity(
+    /** Share of spending that is essential or debt — the part that cannot be
+     *  dropped next month by deciding to. */
+    val rigidShare: Double,
+    /** What is left: the discretionary spending, in manat. */
+    val flexible: Double,
+)
+
+/**
+ * How much room the month actually has.
+ *
+ * A budget where nearly everything is rent, food and repayments is not worse
+ * than one that is not — it simply has less give in it, and that is the thing
+ * a percentage on its own never says.
+ */
+fun spendingRigidity(split: SpendingSplit): Rigidity? {
+    if (!split.hasCoverage) return null
+    return Rigidity(
+        rigidShare = (split.essential + split.debt) / split.total,
+        flexible = split.discretionary,
+    )
+}
+
+data class FundPace(
+    /** Income minus everything spent, this month. */
+    val retainedMonthly: Double,
+    /** What was deliberately put into a saving category. */
+    val savingMonthly: Double,
+    /** Months to the target at the retained rate. Null when nothing is retained. */
+    val monthsAtRetained: Double?,
+    /** Months to the target at the deliberate-saving rate. */
+    val monthsAtSaving: Double?,
+)
+
+/**
+ * How long the target takes, at two different rates.
+ *
+ * The gap between them is the whole point. Money retained is money that was
+ * not spent, which is not the same as money put away — and the difference
+ * between "seven months" and "three years" is what makes that concrete.
+ */
+fun fundPace(data: FinanceData, month: MonthKey, target: Double): FundPace? {
+    val split = classifySpending(data, month)
+    val income = actualIncome(data.transactions, month)
+    if (income <= 0 || target <= 0) return null
+
+    val retainedMonthly = round2(income - split.total)
+    val savingMonthly = split.saving
+
+    return FundPace(
+        retainedMonthly = retainedMonthly,
+        savingMonthly = savingMonthly,
+        monthsAtRetained = if (retainedMonthly > 0) target / retainedMonthly else null,
+        monthsAtSaving = if (savingMonthly > 0) target / savingMonthly else null,
+    )
+}
+
+data class FrameworkGaps(val needs: Double, val wants: Double, val savings: Double)
+
+/** Distance from each reference share, in percentage points. */
+fun frameworkGaps(framework: FrameworkSplit) = FrameworkGaps(
+    needs = (framework.needsShare - Reference503020.NEEDS) * 100,
+    wants = (framework.wantsShare - Reference503020.WANTS) * 100,
+    savings = (framework.savingsShare - Reference503020.SAVINGS) * 100,
+)

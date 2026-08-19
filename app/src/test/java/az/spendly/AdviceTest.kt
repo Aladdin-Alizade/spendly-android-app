@@ -62,7 +62,7 @@ class BudgetHealthTest {
 
     @Test
     fun `reports the month arithmetic`() {
-        val data = build(
+        val data = financeData(
             transactions = listOf(income(M, 3000.0), spend(M, "Ərzaq", 2400.0)),
             budgetLines = listOf(line(planned = 2000.0)),
         )
@@ -80,7 +80,7 @@ class BudgetHealthTest {
     @Test
     fun `leaves the ratios null rather than dividing by nothing`() {
         val health = budgetAdvice(
-            build(transactions = listOf(spend(M, "Ərzaq", 50.0))),
+            financeData(transactions = listOf(spend(M, "Ərzaq", 50.0))),
             M,
             TODAY,
         ).health
@@ -94,12 +94,12 @@ class AdviceSilenceTest {
 
     @Test
     fun `says nothing at all for an empty month`() {
-        assertTrue(budgetAdvice(build(), M, TODAY).all().isEmpty())
+        assertTrue(budgetAdvice(financeData(), M, TODAY).all().isEmpty())
     }
 
     @Test
     fun `records why each rule stayed silent`() {
-        val report = budgetAdvice(build(), M, TODAY)
+        val report = budgetAdvice(financeData(), M, TODAY)
         val methods = report.unavailable.map { it.method }
         assertTrue(methods.contains(MethodId.SPENDING_RATIO))
         assertTrue(methods.contains(MethodId.VARIANCE))
@@ -109,7 +109,7 @@ class AdviceSilenceTest {
 
     @Test
     fun `gives no plan advice when there is no plan`() {
-        val data = build(transactions = listOf(income(M, 1000.0), spend(M, "Ərzaq", 400.0)))
+        val data = financeData(transactions = listOf(income(M, 1000.0), spend(M, "Ərzaq", 400.0)))
         assertFalse(budgetAdvice(data, M, TODAY).ids().contains("total-variance"))
     }
 }
@@ -118,7 +118,7 @@ class VarianceAdviceTest {
 
     @Test
     fun `reports a category over its plan, with the amount`() {
-        val data = build(
+        val data = financeData(
             transactions = listOf(income(M, 1000.0), spend(M, "Ərzaq", 420.0)),
             budgetLines = listOf(line(planned = 300.0)),
         )
@@ -130,7 +130,7 @@ class VarianceAdviceTest {
 
     @Test
     fun `ignores a variance too small to matter`() {
-        val data = build(
+        val data = financeData(
             transactions = listOf(income(M, 1000.0), spend(M, "Ərzaq", 302.0)),
             budgetLines = listOf(line(planned = 300.0)),
         )
@@ -139,7 +139,7 @@ class VarianceAdviceTest {
 
     @Test
     fun `treats coming in under plan as a good thing`() {
-        val data = build(
+        val data = financeData(
             transactions = listOf(income(M, 1000.0), spend(M, "Ərzaq", 200.0)),
             budgetLines = listOf(line(planned = 300.0)),
         )
@@ -150,21 +150,23 @@ class VarianceAdviceTest {
     @Test
     fun `does not repeat the health figures as advice when nothing is wrong`() {
         // Income and the retained rate are already displayed above the list.
-        val data = build(
+        val data = financeData(
             transactions = listOf(income(M, 1000.0), spend(M, "Ərzaq", 200.0)),
             budgetLines = listOf(line(planned = 300.0)),
         )
-        val found = budgetAdvice(data, M, TODAY).ids()
-        assertFalse(found.contains("spending-ratio"))
-        assertFalse(found.contains("retained"))
+        assertFalse(budgetAdvice(data, M, TODAY).ids().contains("overspent"))
     }
 
     @Test
-    fun `does raise them when the month does not pay for itself`() {
-        val data = build(transactions = listOf(income(M, 100.0), spend(M, "Ərzaq", 400.0)))
-        val attention = budgetAdvice(data, M, TODAY).attention.map { it.id }
-        assertTrue(attention.contains("spending-ratio"))
-        assertTrue(attention.contains("retained"))
+    fun `does raise it when the month does not pay for itself`() {
+        val data = financeData(transactions = listOf(income(M, 100.0), spend(M, "Ərzaq", 400.0)))
+        val report = budgetAdvice(data, M, TODAY)
+        val overspent = report.attention.firstOrNull { it.id == "overspent" }
+
+        // One card, not two: the ratio and the shortfall are the same fact.
+        assertNotNull(overspent)
+        assertTrue(overspent!!.fact.contains("300.00 ₼"))
+        assertEquals(1, report.attention.count { it.method == MethodId.SPENDING_RATIO })
     }
 }
 
@@ -174,7 +176,7 @@ class RepeatedOverrunTest {
 
     @Test
     fun `fires at three of the last four months`() {
-        val data = build(
+        val data = financeData(
             transactions = months.map { income(it, 1000.0) } +
                 months.mapIndexed { index, month ->
                     spend(month, "Ərzaq", if (index == 1) 80.0 else 150.0)
@@ -190,7 +192,7 @@ class RepeatedOverrunTest {
 
     @Test
     fun `stays quiet at two of four`() {
-        val data = build(
+        val data = financeData(
             transactions = months.map { income(it, 1000.0) } +
                 months.mapIndexed { index, month ->
                     spend(month, "Ərzaq", if (index < 2) 150.0 else 80.0)
@@ -208,7 +210,7 @@ class AnomalyTest {
     @Test
     fun `flags a month far outside the usual range`() {
         val usual = listOf(150.0, 145.0, 155.0, 150.0)
-        val data = build(
+        val data = financeData(
             transactions = steady.map { income(it, 1000.0) } +
                 steady.mapIndexed { index, month -> spend(month, "Nəqliyyat", usual[index]) } +
                 listOf(income(M, 1000.0), spend(M, "Nəqliyyat", 350.0)),
@@ -222,7 +224,7 @@ class AnomalyTest {
 
     @Test
     fun `does not flag a month inside the usual variation`() {
-        val data = build(
+        val data = financeData(
             transactions = steady.flatMapIndexed { index: Int, month: String ->
                 listOf(income(month, 1000.0), spend(month, "Nəqliyyat", 140.0 + index * 10))
             } + listOf(income(M, 1000.0), spend(M, "Nəqliyyat", 165.0)),
@@ -232,7 +234,7 @@ class AnomalyTest {
 
     @Test
     fun `will not run on too little history`() {
-        val data = build(
+        val data = financeData(
             transactions = listOf(
                 income(M, 1000.0),
                 spend(M, "Nəqliyyat", 999.0),
@@ -277,7 +279,7 @@ class ZeroBasedTest {
 
     @Test
     fun `names planned income that has no job`() {
-        val data = build(
+        val data = financeData(
             incomePlans = listOf(IncomePlan(M, mapOf("Maaş" to 1000.0))),
             budgetLines = listOf(line(planned = 700.0)),
         )
@@ -288,7 +290,7 @@ class ZeroBasedTest {
 
     @Test
     fun `flags a plan that spends more than it expects to earn`() {
-        val data = build(
+        val data = financeData(
             incomePlans = listOf(IncomePlan(M, mapOf("Maaş" to 700.0))),
             budgetLines = listOf(line(planned = 1000.0)),
         )
@@ -301,7 +303,7 @@ class SinkingFundTest {
 
     @Test
     fun `divides a future planned expense across the months until it`() {
-        val data = build(
+        val data = financeData(
             budgetLines = listOf(
                 line(month = "2027-02", description = "Sığorta", planned = 600.0),
             ),
@@ -314,7 +316,7 @@ class SinkingFundTest {
 
     @Test
     fun `ignores past and current months`() {
-        val data = build(budgetLines = listOf(line(month = M, planned = 600.0)))
+        val data = financeData(budgetLines = listOf(line(month = M, planned = 600.0)))
         assertFalse(budgetAdvice(data, M, TODAY).ids().any { it.startsWith("sinking-") })
     }
 }
@@ -325,7 +327,7 @@ class PrioritisationTest {
     fun `caps each bucket at three`() {
         val months = listOf("2026-05", "2026-06", "2026-07", "2026-08")
         val categories = listOf("Ərzaq", "Nəqliyyat", "İdman", "Təhsil", "Əyləncə")
-        val data = build(
+        val data = financeData(
             transactions = months.flatMap { month ->
                 listOf(income(month, 5000.0)) +
                     categories.map { spend(month, it, if (month == M) 500.0 else 100.0) }
@@ -343,7 +345,7 @@ class PrioritisationTest {
 
     @Test
     fun `ranks by manat at stake, not by percentage`() {
-        val data = build(
+        val data = financeData(
             transactions = listOf(
                 income(M, 5000.0),
                 spend(M, "Ərzaq", 700.0),
@@ -369,21 +371,24 @@ class AdviceLanguageTest {
     @Test
     fun `never instructs, only observes or suggests`() {
         val months = listOf("2026-05", "2026-06", "2026-07", "2026-08")
-        val data = build(
+        val data = financeData(
             transactions = months.flatMap { listOf(income(it, 1000.0), spend(it, "Ərzaq", 400.0)) } +
                 listOf(spend(M, "Nəqliyyat", 300.0)),
             budgetLines = months.map { line(month = it, planned = 200.0) },
             incomePlans = listOf(IncomePlan(M, mapOf("Maaş" to 1000.0))),
         )
 
-        val instructing = Regex("məcbur|mütləq|etməlisiniz|olmalısınız", RegexOption.IGNORE_CASE)
-        val suggesting = Regex("dəyər|düşünməyə|yoxlamağa|keçirməyə")
+        // The rule is that nothing instructs — not that every suggestion uses
+        // one of a handful of approved words, which only constrained the
+        // wording.
+        val commanding = Regex(
+            "məcbur|mütləq|etməlisiniz|olmalısınız|azaltmalı|kəsməlisiniz",
+            RegexOption.IGNORE_CASE,
+        )
 
         for (advice in budgetAdvice(data, M, TODAY).all()) {
-            assertFalse(advice.fact, instructing.containsMatchIn(advice.fact))
-            advice.suggestion?.let {
-                assertTrue(it, suggesting.containsMatchIn(it))
-            }
+            assertFalse(advice.id, commanding.containsMatchIn(advice.fact))
+            advice.suggestion?.let { assertFalse(advice.id, commanding.containsMatchIn(it)) }
         }
     }
 }
@@ -396,7 +401,7 @@ class OneSubjectPerBucketTest {
         // unusually high. Three slots spent on one category hide the rest of
         // the month.
         val months = listOf("2026-05", "2026-06", "2026-07", "2026-08")
-        val data = build(
+        val data = financeData(
             transactions = months.map { income(it, 2000.0) } +
                 months.map { spend(it, "Ərzaq", if (it == M) 400.0 else 150.0) } +
                 months.map { spend(it, "Nəqliyyat", if (it == M) 260.0 else 40.0) },

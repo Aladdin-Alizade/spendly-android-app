@@ -54,11 +54,15 @@ import az.spendly.domain.insights.REVIEW_INTERVAL_MONTHS
 import az.spendly.domain.insights.CLASSIFICATION_COVERAGE_MIN
 import az.spendly.domain.insights.KIND_LABEL
 import az.spendly.domain.insights.Reference503020
+import az.spendly.domain.insights.FrameworkSplit
 import az.spendly.domain.insights.SpendingSplit
 import az.spendly.domain.insights.budgetAdvice
 import az.spendly.domain.insights.classifySpending
 import az.spendly.domain.insights.emergencyFund
 import az.spendly.domain.insights.fiftyThirtyTwenty
+import az.spendly.domain.insights.frameworkGaps
+import az.spendly.domain.insights.fundPace
+import az.spendly.domain.insights.spendingRigidity
 import az.spendly.domain.insights.methodsNeedingReview
 import az.spendly.domain.insights.needsReview
 import az.spendly.domain.today
@@ -68,6 +72,7 @@ import az.spendly.ui.components.Pill
 import az.spendly.ui.components.Swatch
 import az.spendly.ui.theme.Radius
 import az.spendly.ui.theme.spendlyColors
+import java.util.Locale
 import kotlin.math.min
 import kotlin.math.roundToInt
 
@@ -81,6 +86,10 @@ fun AdviceScreen(data: FinanceData, month: MonthKey, modifier: Modifier = Modifi
     val framework = remember(data, month) { fiftyThirtyTwenty(data, month) }
     var fundMonths by remember { mutableStateOf(3) }
     val fund = remember(data, month, fundMonths) { emergencyFund(data, month, fundMonths) }
+    val rigidity = remember(split) { spendingRigidity(split) }
+    val pace = remember(data, month, fund) {
+        fund?.let { fundPace(data, month, it.target) }
+    }
     val health = report.health
 
     val nothing = report.attention.isEmpty() && report.good.isEmpty() && report.review.isEmpty()
@@ -242,6 +251,16 @@ fun AdviceScreen(data: FinanceData, month: MonthKey, modifier: Modifier = Modifi
                         }
                     }
 
+                    rigidity?.let { room ->
+                        Reading(
+                            "Xərcinizin ${(room.rigidShare * 100).roundToInt()}%-i kirayə, " +
+                                "ərzaq, kommunal və borc kimi asanlıqla kəsilməyən " +
+                                "şeylərdir. Gəliriniz azalsa, rahat azalda biləcəyiniz " +
+                                "hissə ${formatAZN(room.flexible)} — istəyə bağlı olan bu " +
+                                "qədərdir.",
+                        )
+                    }
+
                     FrameworkNote(
                         "Bu bölgü mühakimə deyil — hansı kateqoriyanın zəruri olduğunu " +
                             "siz təyin edirsiniz.",
@@ -274,6 +293,8 @@ fun AdviceScreen(data: FinanceData, month: MonthKey, modifier: Modifier = Modifi
                         reference = Reference503020.SAVINGS,
                         amount = framework.savings,
                     )
+                    FrameworkReading(framework)
+
                     FrameworkNote(
                         "CFPB bunu bir neçə büdcə qaydasından biri kimi öyrədir — hamıya " +
                             "uyğun gəlmir. Borc ödənişləri «zəruri» tərəfdə sayılır.",
@@ -341,6 +362,25 @@ fun AdviceScreen(data: FinanceData, month: MonthKey, modifier: Modifier = Modifi
                             color = colors.text,
                         )
                     }
+
+                    Reading(
+                        buildString {
+                            append("Gəliriniz dayansa, bu məbləğ təxminən ")
+                            append("${fund.months} ay əsas xərclərinizi qarşılayar.")
+                            pace?.monthsAtRetained?.let {
+                                append(" Bu ay qalan ${formatAZN(pace.retainedMonthly)} hər ")
+                                append("ay qalsa, hədəfə ")
+                                append(String.format(Locale.US, "%.1f", it))
+                                append(" ayda çatarsınız.")
+                            }
+                            pace?.monthsAtSaving?.let {
+                                append(" Yalnız yığıma qoyduğunuz ")
+                                append("${formatAZN(pace.savingMonthly)} ilə isə ")
+                                append("${it.roundToInt()} ay çəkər — «qalan» ilə «yığılan» ")
+                                append("arasındakı fərq budur.")
+                            }
+                        },
+                    )
 
                     FrameworkNote(
                         "CFPB vahid rəqəm vermir — məbləğ vəziyyətinizdən asılıdır. Tətbiq " +
@@ -526,9 +566,13 @@ private fun FrameworkRow(label: String, actual: Double, reference: Double, amoun
             )
         }
         Box(modifier = Modifier.padding(vertical = 6.dp)) {
+            /* One colour for all three rows. Colouring "over the reference" as
+               a warning would be wrong on the savings row, where over is the
+               good direction — the mark says where the reference is, and the
+               reading below says what the distance means. */
             Track(
                 value = actual.coerceIn(0.0, 1.0),
-                color = if (actual > reference) colors.series[3] else colors.series[1],
+                color = colors.series[0],
                 reference = reference,
             )
         }
@@ -538,6 +582,58 @@ private fun FrameworkRow(label: String, actual: Double, reference: Double, amoun
             color = colors.textFaint,
         )
     }
+}
+
+/**
+ * What matching, or missing, the reference actually means.
+ *
+ * The three percentages on their own leave the reader to work out whether
+ * being over on one and under on another is good or bad. It is arithmetic, so
+ * the screen can say it: the framework is a means, and the share retained is
+ * the end it is aiming at.
+ */
+@Composable
+private fun FrameworkReading(framework: FrameworkSplit) {
+    val gaps = frameworkGaps(framework)
+    val needs = gaps.needs.roundToInt()
+    val savings = gaps.savings.roundToInt()
+    val retained = (framework.savingsShare * 100).roundToInt()
+
+    Reading(
+        when {
+            needs > 0 && savings >= 0 ->
+                "Zəruri xərcləriniz istinaddan $needs bənd yuxarıdır, amma buna " +
+                    "baxmayaraq gəlirinizin $retained%-i qalır — istinadın gözlədiyi " +
+                    "20%-dən çox. Yəni sabit xərclərinizin böyüklüyünü istəyə bağlı " +
+                    "xərcləri aşağı saxlamaqla bağlayırsınız."
+
+            needs > 0 ->
+                "Zəruri xərcləriniz istinaddan $needs bənd yuxarıdır, və qalan pay da " +
+                    "istinaddan aşağıdır. Sabit xərclər gəlirin böyük hissəsini tutduğu " +
+                    "üçün yığıma az yer qalır."
+
+            else ->
+                "Üç payın da istinada yaxındır. Gəlirinizin $retained%-i xərclənmədən " +
+                    "qalır."
+        },
+    )
+}
+
+/** A panel's reading: what its figures mean, in a sentence. */
+@Composable
+private fun Reading(text: String) {
+    val colors = spendlyColors
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodySmall,
+        color = colors.text,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp)
+            .clip(RoundedCornerShape(Radius.sm))
+            .background(colors.surfaceInset)
+            .padding(12.dp),
+    )
 }
 
 /** The sentence that says what a framework is and is not. */

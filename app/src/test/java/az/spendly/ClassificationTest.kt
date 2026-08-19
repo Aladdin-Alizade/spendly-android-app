@@ -226,9 +226,9 @@ class SignedRateTest {
             .let { it.attention + it.good + it.review }
             .first { it.id == "retained-trend" }
 
+        // Both sides keep their sign, so the two figures cannot read as identical.
         assertTrue(advice.fact, advice.fact.contains("-20%"))
-        // Points, not per cent: "32% faiz bəndi" says percentage twice.
-        assertTrue(advice.fact, Regex("\\d+ faiz bəndi").containsMatchIn(advice.fact))
-        assertFalse(advice.fact, Regex("%\\s*faiz bəndi").containsMatchIn(advice.fact))
+        assertTrue(advice.fact, advice.fact.contains("20%"))
+        assertTrue(advice.fact, advice.fact.contains("daha azını saxladınız"))
     }
 }

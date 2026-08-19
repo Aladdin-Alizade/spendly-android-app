@@ -161,46 +161,29 @@ private fun percent(ratio: Double): String = "${(abs(ratio) * 100).roundToInt()}
  *  of −16% shown as 16% turns the sentence into nonsense. */
 private fun signed(ratio: Double): String = "${(ratio * 100).roundToInt()}%"
 
-/** The gap between two rates is in points, so it carries no per-cent sign. */
-private fun points(ratio: Double): String = "${(abs(ratio) * 100).roundToInt()}"
-
 /* --- what the month looks like against income --------------------- */
 
-private val spendingRatio: Rule = { context ->
-    val ratio = context.health.spendingRatio
-    if (ratio == null) {
+/**
+ * The month did not pay for itself.
+ *
+ * This was two rules — one for the ratio, one for the shortfall — which put
+ * two sentences about the same fact in the same bucket of three.
+ */
+private val overspent: Rule = { context ->
+    val health = context.health
+    if (health.spendingRatio == null) {
         context.skip(Unavailable(MethodId.SPENDING_RATIO, "Bu ay gəlir qeyd edilməyib"))
-    } else if (ratio > 1) {
-        /* The ratio itself is already on screen in the health block, so it
-           only becomes advice when it crosses the line where the month does
-           not pay for itself. Restating it otherwise pushes the category
-           detail out of a bucket that holds three. */
+    } else if (health.remaining < 0) {
         context.add(
             Advice(
-                id = "spending-ratio",
+                id = "overspent",
                 method = MethodId.SPENDING_RATIO,
                 priority = AdvicePriority.ATTENTION,
-                fact = "Bu ay xərcləriniz gəlirinizin ${percent(ratio)}-ni təşkil edir " +
-                    "(${formatAZN(context.health.expenses)} / ${formatAZN(context.health.income)}).",
-                suggestion = "Fərqin hansı kateqoriyalardan gəldiyini nəzərdən keçirməyə dəyər.",
-                materiality = round2(context.health.expenses - context.health.income),
-            ),
-        )
-    }
-}
-
-private val retained: Rule = { context ->
-    val health = context.health
-    if (health.retainedRate == null) {
-        context.skip(Unavailable(MethodId.RETAINED, "Bu ay gəlir qeyd edilməyib"))
-    } else if (health.remaining < 0) {
-        // Same reasoning as the ratio: the figure is in the health block already.
-        context.add(
-            Advice(
-                id = "retained",
-                method = MethodId.RETAINED,
-                priority = AdvicePriority.ATTENTION,
-                fact = "Bu ay gəlirinizdən ${formatAZN(-health.remaining)} çox xərclənib.",
+                fact = "Bu ay gəlirinizdən ${formatAZN(-health.remaining)} çox xərclədiniz — " +
+                    "qazandığınız hər 100 manata qarşı " +
+                    "${(health.spendingRatio * 100).roundToInt()} manat.",
+                suggestion = "Fərqin hansı kateqoriyalardan gəldiyinə baxmağa dəyər — " +
+                    "aşağıdakı siyahı ən böyükdən başlayır.",
                 materiality = abs(health.remaining),
             ),
         )
@@ -230,21 +213,14 @@ private val retainedTrend: Rule = { context ->
                     id = "retained-trend",
                     method = MethodId.RETAINED,
                     priority = if (gap > 0) AdvicePriority.GOOD else AdvicePriority.REVIEW,
-                    // The gap between two rates is in percentage points, not
-                    // per cent — and either rate can be negative, so both keep
-                    // their sign.
-                    fact = if (gap > 0) {
-                        "Qalan pulun payı son ${rates.size} ayın ortalamasından " +
-                            "${points(gap)} faiz bəndi yüksəkdir " +
-                            "(${signed(context.health.retainedRate)} / ${signed(average)})."
-                    } else {
-                        "Qalan pulun payı son ${rates.size} ayın ortalamasından " +
-                            "${points(gap)} faiz bəndi aşağıdır " +
-                            "(${signed(context.health.retainedRate)} / ${signed(average)})."
-                    },
+                    // Either rate can be negative, so both keep their sign.
+                    fact = "Bu ay gəlirinizin ${signed(context.health.retainedRate)}-i " +
+                        "qaldı — son ${rates.size} ayda orta hesabla ${signed(average)} " +
+                        "qalırdı. Yəni bu ay daha " +
+                        (if (gap > 0) "çoxunu" else "azını") + " saxladınız.",
                     suggestion = if (gap < 0) {
-                        "Fərqin gəlirin azalmasından, yoxsa xərcin artmasından gəldiyini " +
-                            "nəzərdən keçirməyə dəyər."
+                        "Səbəb ya gəlirin azalması, ya da xərcin artmasıdır — hansı " +
+                            "olduğuna baxmağa dəyər."
                     } else {
                         null
                     },
@@ -270,11 +246,10 @@ private val totalVariance: Rule = { context ->
                     id = "total-variance",
                     method = MethodId.VARIANCE,
                     priority = if (variance > 0) AdvicePriority.ATTENTION else AdvicePriority.GOOD,
-                    fact = if (variance > 0) {
-                        "Ümumi xərciniz plandan ${formatAZN(variance)} çoxdur (${percent(ratio)})."
-                    } else {
-                        "Ümumi xərciniz plandan ${formatAZN(-variance)} azdır (${percent(ratio)})."
-                    },
+                    fact = "Bu ay ${formatAZN(health.expenses)} xərclədiniz — " +
+                        "planladığınızdan " +
+                        (if (variance > 0) formatAZN(variance) else formatAZN(-variance)) +
+                        (if (variance > 0) " çox." else " az."),
                     materiality = abs(variance),
                     meter = AdviceMeter(
                         value = min(health.expenses / health.plannedExpenses, 1.0),
@@ -300,13 +275,13 @@ private val categoryVariance: Rule = { context ->
                 id = "variance-${row.category}",
                 method = MethodId.VARIANCE,
                 priority = if (variance > 0) AdvicePriority.ATTENTION else AdvicePriority.GOOD,
-                fact = if (variance > 0) {
-                    "${row.category} xərci plandan ${formatAZN(variance)} çoxdur " +
-                        "(${formatAZN(row.actual)} / ${formatAZN(row.planned)})."
-                } else {
-                    "${row.category} xərci plandan ${formatAZN(-variance)} azdır " +
-                        "(${formatAZN(row.actual)} / ${formatAZN(row.planned)})."
-                },
+                fact = "${row.category} üçün ${formatAZN(row.planned)} planlamışdınız — " +
+                    "${formatAZN(row.actual)} getdi, " +
+                    (if (variance > 0) {
+                        "${formatAZN(variance)} çox."
+                    } else {
+                        "${formatAZN(-variance)} qənaət."
+                    }),
                 materiality = abs(variance),
                 subject = row.category,
                 meter = AdviceMeter(
@@ -356,9 +331,10 @@ private val repeatedOverrun: Rule = { context ->
                     method = MethodId.VARIANCE,
                     priority = AdvicePriority.ATTENTION,
                     fact = "$category son $window ayın ${over.size}-ində planı aşıb — " +
-                        "cəmi ${formatAZN(excess)}.",
-                    suggestion = "Nəzərdən keçirməyə dəyər: ya bu kateqoriyanın xərci, " +
-                        "ya da onun üçün qoyulan plan məbləği.",
+                        "bu aylarda cəmi ${formatAZN(excess)} artıq gedib.",
+                    suggestion = "Bir dəfə aşmaq təsadüf ola bilər; hər ay aşmaq adətən " +
+                        "plan məbləğinin real olmadığını göstərir. Ya xərcə, ya plana " +
+                        "baxmağa dəyər.",
                     materiality = excess,
                     subject = category,
                 ),
@@ -398,10 +374,12 @@ private val anomaly: Rule = { context ->
                     id = "anomaly-${row.category}",
                     method = MethodId.ANOMALY,
                     priority = if (difference > 0) AdvicePriority.ATTENTION else AdvicePriority.REVIEW,
-                    fact = "${row.category} bu ay ${formatAZN(row.actual)} — " +
-                        "son ${history.size} ayın adi səviyyəsi ${formatAZN(typical)} olub.",
+                    fact = "${row.category} üçün adətən ayda ${formatAZN(typical)} çıxır — " +
+                        "bu ay ${formatAZN(row.actual)} çıxdı, " +
+                        "${formatAZN(abs(difference))} fərqlə.",
                     suggestion = if (difference > 0) {
-                        "Birdəfəlik xərc olub-olmadığını yoxlamağa dəyər."
+                        "Birdəfəlik bir xərc olubsa, gözlənilən haldır. Deyilsə, növbəti " +
+                            "aylarda da təkrarlanacaq."
                     } else {
                         null
                     },
@@ -441,13 +419,9 @@ private val trend: Rule = { context ->
                     id = "trend-${row.category}",
                     method = MethodId.TREND,
                     priority = if (ratio > 0) AdvicePriority.REVIEW else AdvicePriority.GOOD,
-                    fact = if (ratio > 0) {
-                        "${row.category} xərci son 3 ayın ortalamasından ${percent(ratio)} " +
-                            "çoxdur (${formatAZN(row.actual)} / ${formatAZN(round2(average))})."
-                    } else {
-                        "${row.category} xərci son 3 ayın ortalamasından ${percent(ratio)} " +
-                            "azdır (${formatAZN(row.actual)} / ${formatAZN(round2(average))})."
-                    },
+                    fact = "${row.category} son 3 ayda orta hesabla " +
+                        "${formatAZN(round2(average))} olub — bu ay ${formatAZN(row.actual)}, " +
+                        "${percent(ratio)} " + (if (ratio > 0) "çox." else "az."),
                     materiality = abs(difference),
                     subject = row.category,
                 ),
@@ -490,10 +464,12 @@ private val lifestyle: Rule = { context ->
                         id = "lifestyle",
                         method = MethodId.LIFESTYLE,
                         priority = AdvicePriority.REVIEW,
-                        fact = "Son 3 ayda xərcləriniz ${percent(expenseGrowth)} artıb, " +
-                            "gəliriniz ${percent(incomeGrowth)} — fərq ${percent(gap)}.",
-                        suggestion = "Artımın hansı kateqoriyalardan gəldiyini nəzərdən " +
-                            "keçirməyə dəyər.",
+                        fact = "Xərcləriniz gəlirinizdən sürətlə artır — son 3 ayda xərc " +
+                            "${percent(expenseGrowth)}, gəlir isə ${percent(incomeGrowth)} " +
+                            "artıb.",
+                        suggestion = "Gəlir artanda xərcin artması adi haldır, amma bu " +
+                            "templə fərq açılır. Artımın hansı kateqoriyalardan gəldiyinə " +
+                            "baxmağa dəyər.",
                         materiality = round2(expenseNow - expenseBefore),
                     ),
                 )
@@ -519,8 +495,9 @@ private val concentration: Rule = { context ->
                         id = "concentration",
                         method = MethodId.CONCENTRATION,
                         priority = AdvicePriority.REVIEW,
-                        fact = "${top.category} bu ayın xərclərinin ${percent(share)}-ni " +
-                            "təşkil edir — ${formatAZN(top.actual)}.",
+                        fact = "Xərclədiyiniz hər 100 manatın " +
+                            "${(share * 100).roundToInt()} manatı ${top.category} " +
+                            "kateqoriyasına gedir — bu ay ${formatAZN(top.actual)}.",
                         materiality = top.actual,
                         subject = top.category,
                         meter = AdviceMeter(value = share, label = "ümumi xərcdəki payı"),
@@ -546,8 +523,8 @@ private val unexpected: Rule = { context ->
                     id = "unexpected",
                     method = MethodId.UNEXPECTED,
                     priority = AdvicePriority.REVIEW,
-                    fact = "Xərclərinizin ${percent(share)}-i planın kənarındadır — " +
-                        "${formatAZN(round2(beyond))}.",
+                    fact = "${formatAZN(round2(beyond))} planda nəzərdə tutulmamış " +
+                        "xərcdir — bu ayın xərcinin ${percent(share)}-i.",
                     materiality = round2(beyond),
                     meter = AdviceMeter(value = share, label = "plandan kənar hissə"),
                 ),
@@ -582,8 +559,10 @@ private val recurringBurden: Rule = { context ->
                         id = "recurring",
                         method = MethodId.RECURRING,
                         priority = AdvicePriority.REVIEW,
-                        fact = "Hər ay təkrarlanan ${recurring.size} planlaşdırılmış xərc " +
-                            "gəlirinizin ${percent(share)}-ni tutur — ${formatAZN(total)}.",
+                        fact = "Gəlirinizin ${percent(share)}-i hər ay təkrarlanan " +
+                            "öhdəliklərə bağlıdır — ${recurring.size} sətir, " +
+                            "${formatAZN(total)}. Sərbəst qalan hissə " +
+                            "${percent(1 - share)}-dir.",
                         materiality = total,
                         meter = AdviceMeter(value = min(share, 1.0), label = "gəlirdəki payı"),
                     ),
@@ -608,8 +587,8 @@ private val zeroBased: Rule = { context ->
                     id = "zero-based",
                     method = MethodId.ZERO_BASED,
                     priority = AdvicePriority.GOOD,
-                    fact = "Planlaşdırılan gəlirin demək olar hamısının təyinatı var " +
-                        "(fərq ${formatAZN(abs(unallocated))}).",
+                    fact = "Planlaşdırdığınız gəlirin demək olar hamısının təyinatı var — " +
+                        "yersiz qalan cəmi ${formatAZN(abs(unallocated))}.",
                     materiality = abs(unallocated),
                 ),
             )
@@ -624,15 +603,15 @@ private val zeroBased: Rule = { context ->
                         AdvicePriority.REVIEW
                     },
                     fact = if (unallocated < 0) {
-                        "Planınız qazanmağı gözlədiyinizdən ${formatAZN(-unallocated)} " +
-                            "çox xərcləyir."
+                        "Planınızın özü kəsirlidir: gözlədiyiniz gəlirdən " +
+                            "${formatAZN(-unallocated)} çox xərcləməyi nəzərdə tutur."
                     } else {
-                        "Planlaşdırılan gəlirin ${formatAZN(unallocated)}-i heç bir xərcə " +
-                            "və ya məqsədə təyin edilməyib."
+                        "Planlaşdırdığınız gəlirin ${formatAZN(unallocated)}-i planda heç " +
+                            "bir yerə yazılmayıb — nə xərcə, nə yığıma."
                     },
                     suggestion = if (unallocated > 0) {
-                        "Sıfır-baza yanaşmasında hər manatın təyinatı olur — bu məbləğ üçün " +
-                            "də bir təyinat düşünməyə dəyər."
+                        "Bu məbləğə bir ad vermək — yığım, gələcək xərc, nə olursa — onun " +
+                            "harada qaldığını izləməyi asanlaşdırır."
                     } else {
                         null
                     },
@@ -662,10 +641,10 @@ private val sinkingFunds: Rule = { context ->
                     id = "sinking-${line.id}",
                     method = MethodId.SINKING_FUND,
                     priority = AdvicePriority.REVIEW,
-                    fact = "${line.description} — ${formatMonth(line.month)} üçün " +
-                        "${formatAZN(line.planned)} planlaşdırılıb ($away ay sonra).",
-                    suggestion = "İndidən ayda ${formatAZN(perMonth)} ayırsanız, " +
-                        "vaxtına yığılmış olar.",
+                    fact = "$away ay sonra, ${formatMonth(line.month)} ayında " +
+                        "${formatAZN(line.planned)} lazım olacaq: ${line.description}.",
+                    suggestion = "Bu, ayda ${formatAZN(perMonth)} deməkdir. İndidən kənara " +
+                        "qoysanız, həmin ay büdcənizə birdən düşməz.",
                     materiality = line.planned,
                 ),
             )
@@ -674,8 +653,7 @@ private val sinkingFunds: Rule = { context ->
 }
 
 private val RULES: List<Rule> = listOf(
-    spendingRatio,
-    retained,
+    overspent,
     retainedTrend,
     totalVariance,
     categoryVariance,
