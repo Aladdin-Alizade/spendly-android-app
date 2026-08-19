@@ -98,6 +98,74 @@ category, credential, merge and empty-account rules. They need no device and no 
 
 ---
 
+## Publishing it
+
+A release is the download. Pushing a tag builds the app on GitHub's own
+machines, signs it, and attaches the APK to a GitHub release — so the file is
+served by GitHub and nothing of mine hosts a binary or pays for the bandwidth
+of people installing it.
+
+The address never changes:
+
+```
+https://github.com/Aladdin-Alizade/spendly-android-app/releases/latest/download/spendly.apk
+```
+
+`latest/download/<name>` resolves to whatever the newest release calls that
+file, which is why [`release.yml`](.github/workflows/release.yml) renames
+`app-release.apk` to `spendly.apk` before uploading it. Put the version in the
+file name and that permanent link breaks on the next release; the version is in
+the tag, where it does no such damage.
+
+### Once, before the first release
+
+The build reads its signing key and its Supabase project from
+`local.properties`, and CI is only another machine that needs one — it writes
+the file itself, from repository secrets. **Settings → Secrets and variables →
+Actions**:
+
+| Secret | What it is |
+| --- | --- |
+| `KEYSTORE_BASE64` | The `.jks` from [Putting it on a phone](#putting-it-on-a-phone), base64-encoded |
+| `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD` | What you chose when you created the key |
+| `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` | The same two values `local.properties` holds |
+
+Encoding the keystore, on a Mac:
+
+```bash
+base64 -i ~/spendly-release.jks | pbcopy
+```
+
+A keystore is a file rather than a password, and base64 is only how a binary
+gets into a text field — it is not encryption, and it is not what protects the
+key. The secret store is.
+
+Leave the Supabase pair out and the release still builds, but the published app
+keeps everything on the device: no accounts, no sync. The workflow says so in
+its log instead of leaving it to be discovered on a phone.
+
+### Each release
+
+1. Raise `versionCode` **and** `versionName` in
+   [`app/build.gradle.kts`](app/build.gradle.kts). Android will not install
+   over an install whose `versionCode` is the same or higher, so a forgotten
+   bump is a release nobody can take.
+2. Commit that, then tag it with the same version and push the tag:
+
+```bash
+git tag v1.0.1 && git push origin v1.0.1
+```
+
+That is the entire trigger. Pushing to `main` publishes nothing, and there is
+no button to press.
+
+The workflow stops instead of publishing something misleading in two cases: the
+tag disagreeing with `versionName`, and no keystore secret being set. An
+unsigned APK installs on nothing, so a release built without a key would be an
+announcement with no app in it.
+
+---
+
 ## The four screens
 
 The month you are looking at is set in the header, and applies everywhere.
