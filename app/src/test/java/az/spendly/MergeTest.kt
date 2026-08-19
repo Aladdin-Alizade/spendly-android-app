@@ -157,3 +157,46 @@ class PendingWorkTest {
         assertTrue(hasPendingWork(data, data.copy(transactions = listOf(t("a", amount = 12.0)))))
     }
 }
+
+class DuplicateCategoryTest {
+
+    private fun category(id: String, name: String) =
+        az.spendly.domain.CategoryDef(id, name, TransactionType.EXPENSE)
+
+    @Test
+    fun `resolves the same category held under two ids in favour of the server`() {
+        // A device that never synced seeded its own starting set; the account
+        // was used elsewhere first and holds the same names under other ids.
+        // Sending both is what the server rejects outright.
+        val local = FinanceData(categories = listOf(category("cat-expense-0", "Ərzaq")))
+        val remote = FinanceData(categories = listOf(category("uuid-1", "Ərzaq")))
+
+        val merged = mergeFinanceData(FinanceData(), local, remote)
+
+        assertEquals(1, merged.categories.size)
+        assertEquals("uuid-1", merged.categories.first().id)
+    }
+
+    @Test
+    fun `matches by name regardless of case or padding`() {
+        val local = FinanceData(categories = listOf(category("a", " ərzaq ")))
+        val remote = FinanceData(categories = listOf(category("b", "Ərzaq")))
+
+        assertEquals(1, mergeFinanceData(FinanceData(), local, remote).categories.size)
+    }
+
+    @Test
+    fun `leaves the same name on the other side of the ledger alone`() {
+        // An expense and an income category may share a name; nothing looks a
+        // category up without its type.
+        val local = FinanceData(
+            categories = listOf(
+                az.spendly.domain.CategoryDef("a", "Bonus", TransactionType.EXPENSE),
+                az.spendly.domain.CategoryDef("b", "Bonus", TransactionType.INCOME),
+            ),
+        )
+
+        val merged = mergeFinanceData(FinanceData(), local, FinanceData())
+        assertEquals(2, merged.categories.size)
+    }
+}

@@ -17,14 +17,38 @@
  */
 package az.spendly.data
 
+import az.spendly.domain.CategoryDef
 import az.spendly.domain.FinanceData
+import az.spendly.domain.TransactionType
 
 fun mergeFinanceData(base: FinanceData, local: FinanceData, remote: FinanceData) = FinanceData(
     transactions = mergeRows(base.transactions, local.transactions, remote.transactions) { it.id },
     budgetLines = mergeRows(base.budgetLines, local.budgetLines, remote.budgetLines) { it.id },
     incomePlans = mergeRows(base.incomePlans, local.incomePlans, remote.incomePlans) { it.month },
-    categories = mergeRows(base.categories, local.categories, remote.categories) { it.id },
+    categories = dedupeCategories(
+        mergeRows(base.categories, local.categories, remote.categories) { it.id },
+    ),
 )
+
+/**
+ * Two ids, one category.
+ *
+ * A device that has never synced holds the starting set it seeded for itself,
+ * with ids of its own making. An account that was used elsewhere first holds
+ * the same names under different ids. Merging by id alone keeps both, and the
+ * server rejects the pair outright — a category is unique per (user, type,
+ * name) there, which is the rule that makes a rename possible at all.
+ *
+ * So a duplicate by name is resolved in favour of the server's row. Nothing is
+ * lost by dropping the local one: every transaction, budget line and planned
+ * figure refers to a category by name, never by id.
+ */
+private fun dedupeCategories(categories: List<CategoryDef>): List<CategoryDef> {
+    val seen = mutableSetOf<Pair<TransactionType, String>>()
+    // Merged order is the server's first, so the surviving id is the
+    // server's — the one every other device already agrees on.
+    return categories.filter { seen.add(it.type to it.name.trim().lowercase()) }
+}
 
 /**
  * One collection.

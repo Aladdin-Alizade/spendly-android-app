@@ -122,6 +122,7 @@ fun SpendlyApp(
                 TopBar(
                     month = month,
                     months = months,
+                    user = user,
                     onMonthChange = { month = it },
                     onProfile = { profileOpen = true },
                 )
@@ -260,6 +261,8 @@ fun SpendlyApp(
 private fun TopBar(
     month: MonthKey,
     months: List<MonthKey>,
+    /** Null in local-storage mode, where there is nobody signed in. */
+    user: AccountUser?,
     onMonthChange: (MonthKey) -> Unit,
     onProfile: () -> Unit,
 ) {
@@ -332,21 +335,30 @@ private fun TopBar(
             }
             Chevron("›") { onMonthChange(shiftMonth(month, 1)) }
 
-            // The account lives behind this: who is signed in, what the
-            // account holds, and the way out.
+            /*
+             * The account lives behind this: who is signed in, what the
+             * account holds, and the way out.
+             *
+             * Signed in it wears the account's initial, because a hamburger
+             * reads as "menu" and nobody looks for a way out of their account
+             * in a menu. With no account there is no initial to show, so it
+             * falls back to a neutral mark.
+             */
+            val initial = user?.email?.take(1)?.uppercase()
             Box(
                 modifier = Modifier
                     .padding(start = 4.dp)
                     .size(32.dp)
                     .clip(CircleShape)
-                    .background(colors.surfaceSunken)
+                    .background(if (initial != null) colors.accentSoft else colors.surfaceSunken)
                     .clickable(onClick = onProfile),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = "☰",
+                    text = initial ?: "☰",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = colors.textMuted,
+                    fontWeight = if (initial != null) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (initial != null) colors.accent else colors.textMuted,
                 )
             }
         }
