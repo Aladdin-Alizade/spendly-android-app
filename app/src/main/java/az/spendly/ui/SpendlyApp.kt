@@ -61,17 +61,21 @@ import az.spendly.store.FinanceState
 import az.spendly.store.FinanceViewModel
 import az.spendly.store.LoadStatus
 import az.spendly.ui.dialogs.ProfileDialog
+import az.spendly.ui.dialogs.SavingsEntryDialog
+import az.spendly.ui.dialogs.SavingsPotDialog
 import az.spendly.ui.dialogs.TransactionDialog
 import az.spendly.ui.screens.AdviceScreen
 import az.spendly.ui.screens.BudgetScreen
 import az.spendly.ui.screens.DashboardScreen
+import az.spendly.ui.screens.SavingsScreen
 import az.spendly.ui.screens.TransactionsScreen
 import az.spendly.ui.theme.Radius
 import az.spendly.ui.theme.spendlyColors
 
 private enum class Screen(val label: String) {
     DASHBOARD("İcmal"),
-    TRANSACTIONS("Əməliyyat"),
+    TRANSACTIONS("Qeyd"),
+    SAVINGS("Yığım"),
     ADVICE("Məsləhət"),
     BUDGET("Büdcə"),
 }
@@ -102,6 +106,8 @@ fun SpendlyApp(
     /** null = closed, a transaction = editing it, NEW_TRANSACTION = adding. */
     var editing by remember { mutableStateOf<Transaction?>(null) }
     var adding by remember { mutableStateOf(false) }
+    /** What the add button opens on Yığım: a movement, or the first pot. */
+    var addingSavings by remember { mutableStateOf<SavingsAdd?>(null) }
     var profileOpen by remember { mutableStateOf(false) }
 
     // Returning to the app is the other moment queued work can go out; the
@@ -171,7 +177,21 @@ fun SpendlyApp(
         },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { adding = true },
+                onClick = {
+                    // The add button records whatever the screen is about. On
+                    // Yığım that is a movement — and with no pot yet it is the
+                    // pot itself, because a movement has nowhere to go until
+                    // one exists.
+                    if (screen != Screen.SAVINGS) {
+                        adding = true
+                    } else {
+                        addingSavings = if (state.data.savingsPots.isNotEmpty()) {
+                            SavingsAdd.ENTRY
+                        } else {
+                            SavingsAdd.POT
+                        }
+                    }
+                },
                 containerColor = colors.accent,
                 contentColor = colors.onAccent,
             ) {
@@ -199,6 +219,20 @@ fun SpendlyApp(
                     onAdd = { adding = true },
                 )
 
+                Screen.SAVINGS -> SavingsScreen(
+                    data = state.data,
+                    month = month,
+                    defaultDate = defaultDate,
+                    onAddPot = viewModel::addSavingsPot,
+                    onRenamePot = viewModel::renameSavingsPot,
+                    onSetPotTarget = viewModel::setSavingsPotTarget,
+                    onRemovePot = viewModel::removeSavingsPot,
+                    onAddEntry = viewModel::addSavingsEntry,
+                    onUpdateEntry = viewModel::updateSavingsEntry,
+                    onRemoveEntry = viewModel::removeSavingsEntry,
+                    onConvertFromTransactions = viewModel::convertSavingsFromTransactions,
+                )
+
                 Screen.ADVICE -> AdviceScreen(data = state.data, month = month)
 
                 Screen.BUDGET -> BudgetScreen(
@@ -208,6 +242,7 @@ fun SpendlyApp(
                     onUpsertLine = viewModel::upsertBudgetLine,
                     onRemoveLine = viewModel::removeBudgetLine,
                     onSetIncomePlan = viewModel::setIncomePlan,
+                    onSetSavingsPlan = viewModel::setSavingsPlan,
                     onClearMonthPlan = viewModel::clearMonthPlan,
                     onResetAll = viewModel::resetAll,
                     onAddCategory = viewModel::addCategory,
@@ -264,7 +299,38 @@ fun SpendlyApp(
             },
         )
     }
+
+    when (addingSavings) {
+        SavingsAdd.ENTRY -> SavingsEntryDialog(
+            data = state.data,
+            entry = null,
+            defaultDate = defaultDate,
+            defaultPot = null,
+            onSave = { values ->
+                viewModel.addSavingsEntry(values)
+                month = monthOf(values.date)
+                addingSavings = null
+            },
+            onDelete = null,
+            onDismiss = { addingSavings = null },
+        )
+
+        SavingsAdd.POT -> SavingsPotDialog(
+            data = state.data,
+            pot = null,
+            onAdd = viewModel::addSavingsPot,
+            onRename = viewModel::renameSavingsPot,
+            onSetTarget = viewModel::setSavingsPotTarget,
+            onRemove = viewModel::removeSavingsPot,
+            onDismiss = { addingSavings = null },
+        )
+
+        null -> Unit
+    }
 }
+
+/** What the add button opens on Yığım. */
+private enum class SavingsAdd { ENTRY, POT }
 
 @Composable
 private fun TopBar(

@@ -28,12 +28,20 @@ import az.spendly.domain.CategoryKind
 import az.spendly.domain.FinanceData
 import az.spendly.domain.IncomePlan
 import az.spendly.domain.MonthKey
+import az.spendly.domain.SavingsEntry
+import az.spendly.domain.SavingsPlan
+import az.spendly.domain.SavingsPot
 import az.spendly.domain.Transaction
 import az.spendly.domain.TransactionType
 import az.spendly.domain.addCategory as addCategoryTo
+import az.spendly.domain.addPot as addPotTo
+import az.spendly.domain.convertSavingTransactions
 import az.spendly.domain.emptyData
 import az.spendly.domain.removeCategory as removeCategoryFrom
+import az.spendly.domain.removePot as removePotFrom
 import az.spendly.domain.renameCategory as renameCategoryIn
+import az.spendly.domain.renamePot as renamePotIn
+import az.spendly.domain.setPotTarget as setPotTargetIn
 import az.spendly.domain.round2
 import az.spendly.domain.setCategoryKind as setCategoryKindIn
 import java.util.UUID
@@ -207,6 +215,10 @@ class FinanceViewModel(
         previous.copy(
             budgetLines = previous.budgetLines.filter { it.month != month },
             incomePlans = previous.incomePlans.filter { it.month != month },
+            // The savings figure is part of the month's plan, so "delete the
+            // plan" has to take it too; leaving it would resurrect a number
+            // whose context is gone.
+            savingsPlans = previous.savingsPlans.filter { it.month != month },
         )
     }
 
@@ -229,6 +241,25 @@ class FinanceViewModel(
         )
     }
 
+    fun setSavingsPlan(month: MonthKey, amounts: Map<String, Double>) = commit { previous ->
+        val entry = SavingsPlan(
+            month = month,
+            // A pot planned at zero carries no information, so it is not
+            // stored — an absent key and a zero mean the same thing.
+            amounts = amounts
+                .mapValues { (_, amount) -> round2(amount) }
+                .filterValues { it > 0 },
+        )
+        val exists = previous.savingsPlans.any { it.month == month }
+        previous.copy(
+            savingsPlans = if (exists) {
+                previous.savingsPlans.map { if (it.month == month) entry else it }
+            } else {
+                previous.savingsPlans + entry
+            },
+        )
+    }
+
     /** Copy the recurring plan into a month that has none yet. */
     fun applyTemplate(month: MonthKey) = commit { previous ->
         if (previous.budgetLines.any { it.month == month }) return@commit previous
@@ -247,6 +278,7 @@ class FinanceViewModel(
             .map { it.copy(id = nextId(), month = month) }
 
         val priorPlan = previous.incomePlans.firstOrNull { it.month == source }
+        val priorSavings = previous.savingsPlans.firstOrNull { it.month == source }
 
         previous.copy(
             budgetLines = previous.budgetLines + lines,
@@ -254,6 +286,11 @@ class FinanceViewModel(
                 previous.incomePlans
             } else {
                 previous.incomePlans + IncomePlan(month, priorPlan?.amounts ?: emptyMap())
+            },
+            savingsPlans = if (previous.savingsPlans.any { it.month == month }) {
+                previous.savingsPlans
+            } else {
+                previous.savingsPlans + SavingsPlan(month, priorSavings?.amounts ?: emptyMap())
             },
         )
     }
@@ -279,11 +316,69 @@ class FinanceViewModel(
         removeCategoryFrom(previous, id, reassignTo)
     }
 
+    /* --- savings ------------------------------------------------------- */
+
+    fun addSavingsPot(name: String, target: Double? = null) = commit { previous ->
+        addPotTo(
+            previous,
+            SavingsPot(
+                id = nextId(),
+                name = name,
+                target = target?.takeIf { it > 0 }?.let { round2(it) },
+            ),
+        )
+    }
+
+    /** Renames the pot and every entry that named it, in one change. */
+    fun renameSavingsPot(id: String, name: String) = commit { previous ->
+        renamePotIn(previous, id, name)
+    }
+
+    /** Set or clear what the pot is being filled towards. Moves no money. */
+    fun setSavingsPotTarget(id: String, target: Double?) = commit { previous ->
+        setPotTargetIn(previous, id, target)
+    }
+
+    /** [reassignTo] is the pot anything still in this one moves to. A pot that
+     *  still holds entries and has nowhere to send them is left alone. */
+    fun removeSavingsPot(id: String, reassignTo: String? = null) = commit { previous ->
+        removePotFrom(previous, id, reassignTo)
+    }
+
+    fun addSavingsEntry(entry: SavingsEntry) = commit { previous ->
+        previous.copy(
+            savingsEntries = previous.savingsEntries +
+                entry.copy(id = nextId(), amount = round2(entry.amount)),
+        )
+    }
+
+    fun updateSavingsEntry(id: String, patch: SavingsEntry) = commit { previous ->
+        previous.copy(
+            savingsEntries = previous.savingsEntries.map { existing ->
+                if (existing.id == id) {
+                    patch.copy(id = id, amount = round2(patch.amount))
+                } else {
+                    existing
+                }
+            },
+        )
+    }
+
+    fun removeSavingsEntry(id: String) = commit { previous ->
+        previous.copy(savingsEntries = previous.savingsEntries.filter { it.id != id })
+    }
+
+    /** Turn savings recorded the old way — as spending into a category marked
+     *  `saving` — into pot deposits. The expenses go, so nothing counts twice. */
+    fun convertSavingsFromTransactions() = commit { previous ->
+        convertSavingTransactions(previous) { nextId() }
+    }
+
     /** Delete every transaction, plan and budget line. Not reversible. */
     fun resetAll() = commit { previous ->
-        // The category list is the user's own setup, not their history, so a
-        // reset of the figures leaves it standing.
-        FinanceData(categories = previous.categories)
+        // The category list and the pots are the user's own setup, not their
+        // history, so a reset of the figures leaves them standing.
+        FinanceData(categories = previous.categories, savingsPots = previous.savingsPots)
     }
 
     /**

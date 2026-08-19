@@ -236,11 +236,16 @@ fun flowBuckets(data: FinanceData, period: Period): List<FlowBucket> =
 
 private fun monthlyBuckets(data: FinanceData, months: List<MonthKey>): List<FlowBucket> {
     // Balance carried in from before the period, so the line starts truthfully.
-    var balance = openingBalance(data.transactions, months.first())
+    var balance = openingBalance(data, months.first())
     return months.map { month ->
         val income = actualIncome(data.transactions, month)
         val expenses = actualExpenses(data.transactions, month)
-        balance = round2(balance + income - expenses)
+        // Money moved to or from a pot is not income or spending, so it is not
+        // in either bar — but it does move the balance, so it is in the line.
+        val moved = spendableDeltaOf(
+            data.savingsEntries.filter { monthOf(it.date) == month },
+        )
+        balance = round2(balance + income - expenses + moved)
         FlowBucket(month, formatMonthShort(month), income, expenses, balance)
     }
 }
@@ -249,29 +254,31 @@ private fun monthlyBuckets(data: FinanceData, months: List<MonthKey>): List<Flow
 private fun weeklyBuckets(data: FinanceData, month: MonthKey): List<FlowBucket> {
     val last = daysInMonth(month)
     val edges = listOf(1, 8, 15, 22)
-    var balance = openingBalance(data.transactions, month)
+    var balance = openingBalance(data, month)
     val transactions = transactionsInMonth(data.transactions, month)
+    val entries = data.savingsEntries.filter { monthOf(it.date) == month }
+    val dayOf = { date: String -> date.substring(8, 10).toInt() }
 
     return edges.mapIndexed { index, start ->
         val end = if (index == edges.lastIndex) last else edges[index + 1] - 1
-        val inRange = transactions.filter { transaction ->
-            val day = transaction.date.substring(8, 10).toInt()
-            day in start..end
-        }
+        val inRange = transactions.filter { dayOf(it.date) in start..end }
         val income = sumOf(inRange.filter { it.type == TransactionType.INCOME }.map { it.amount })
         val expenses = sumOf(inRange.filter { it.type == TransactionType.EXPENSE }.map { it.amount })
-        balance = round2(balance + income - expenses)
+        val moved = spendableDeltaOf(entries.filter { dayOf(it.date) in start..end })
+        balance = round2(balance + income - expenses + moved)
         FlowBucket("w${index + 1}", "$start–$end", income, expenses, balance)
     }
 }
 
-/** Net of everything strictly before [month]. */
-private fun openingBalance(transactions: List<Transaction>, month: MonthKey): Double =
+/** Net of everything strictly before [month], savings movements included, so
+ *  the line starts where the balance on screen actually stands. */
+private fun openingBalance(data: FinanceData, month: MonthKey): Double = round2(
     sumOf(
-        transactions
+        data.transactions
             .filter { monthOf(it.date) < month }
             .map { if (it.type == TransactionType.INCOME) it.amount else -it.amount },
-    )
+    ) + spendableDeltaOf(data.savingsEntries.filter { monthOf(it.date) < month }),
+)
 
 /* ------------------------------------------------------------------ *
  * Daily activity

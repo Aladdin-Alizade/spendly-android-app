@@ -71,6 +71,19 @@ enum class CategoryKind {
     companion object {
         val ALL = listOf(ESSENTIAL, DISCRETIONARY, DEBT, SAVING)
 
+        /**
+         * The kinds a category can be given.
+         *
+         * [SAVING] is missing on purpose. Money set aside is not spending, and
+         * it has its own records now — a pot and the movements into it.
+         * Offering it here as well would give one act two homes: the same 400
+         * manat could be a spending category on this screen and a deposit on
+         * the other, and no reader of either screen could tell which.
+         * Categories written before the pots existed keep the kind, so nothing
+         * already recorded changes meaning or falls out of a total.
+         */
+        val SELECTABLE = listOf(ESSENTIAL, DISCRETIONARY, DEBT)
+
         /** Null for anything that is not one of the four, so an unrecognised
          *  kind is dropped rather than trusted. */
         fun of(value: String?): CategoryKind? =
@@ -165,12 +178,110 @@ data class IncomePlan(
 fun plannedIncomeOf(plan: IncomePlan?): Double =
     plan?.amounts?.values?.sum() ?: 0.0
 
+/**
+ * Money set aside is a third flow, not a kind of spending.
+ *
+ * Recording it as an expense was the obvious shortcut and it breaks in two
+ * places: the money looks consumed when it is only moved, and money that
+ * arrives from outside a salary has nowhere to go but income, where it
+ * inflates every share the frameworks report. So deposits and withdrawals are
+ * their own records, and each deposit says where the money came from.
+ */
+@Serializable
+enum class SavingsDirection {
+    @SerialName("in")
+    IN,
+
+    @SerialName("out")
+    OUT;
+
+    val wire: String get() = if (this == IN) "in" else "out"
+
+    companion object {
+        /** An unreadable direction is read as a deposit rather than dropped:
+         *  the row is a record of money, and guessing wrong about which way it
+         *  went is recoverable, losing it is not. */
+        fun of(value: String?): SavingsDirection = if (value == "out") OUT else IN
+    }
+}
+
+/**
+ *   INCOME   — set aside out of money the household already earned. It leaves
+ *              the spendable side, which is why it is not spending.
+ *   EXTERNAL — arrived from outside and went straight to the pot: a gift, a
+ *              sale, a repaid loan. It was never spendable, so it touches
+ *              neither income nor spending, only the pot.
+ */
+@Serializable
+enum class SavingsSource {
+    @SerialName("income")
+    INCOME,
+
+    @SerialName("external")
+    EXTERNAL;
+
+    val wire: String get() = name.lowercase()
+
+    companion object {
+        fun of(value: String?): SavingsSource =
+            if (value == "external") EXTERNAL else INCOME
+    }
+}
+
+/**
+ * A pot is a goal with a name. It is referenced by name for the same reason a
+ * category is — that is how every other row in this app reads — and the id is
+ * here so a rename stays one record.
+ */
+@Serializable
+data class SavingsPot(
+    val id: String,
+    val name: String,
+    /** What the pot is being filled towards. Unset means no target, and the
+     *  screens then report the balance without pretending to know a finish
+     *  line. */
+    val target: Double? = null,
+)
+
+/** One movement into or out of a pot. Always positive; direction carries the
+ *  sign, exactly as it does for a transaction. */
+@Serializable
+data class SavingsEntry(
+    val id: String,
+    val date: DateKey,
+    /** The pot's name, as it stood when this was written. A rename carries it. */
+    val pot: String,
+    val amount: Double,
+    val direction: SavingsDirection,
+    /** Where a deposit came from. Unset on a withdrawal, which has no source. */
+    val source: SavingsSource? = null,
+    val note: String? = null,
+)
+
+/**
+ * What somebody means to put away this month, per pot — the savings side of
+ * the plan, shaped exactly like the income side.
+ *
+ * It exists because a target on a pot answers "how much in the end", not "how
+ * much this month". Planning the deposit is what turns saving from whatever
+ * happens to be left over into a line of the budget like any other.
+ */
+@Serializable
+data class SavingsPlan(
+    val month: MonthKey,
+    /** Planned amount per pot name, as {"Ehtiyat fondu": 400}. */
+    val amounts: Map<String, Double> = emptyMap(),
+)
+
 @Serializable
 data class FinanceData(
     val transactions: List<Transaction> = emptyList(),
     val budgetLines: List<BudgetLine> = emptyList(),
     val incomePlans: List<IncomePlan> = emptyList(),
     val categories: List<CategoryDef> = emptyList(),
+    val savingsPots: List<SavingsPot> = emptyList(),
+    val savingsEntries: List<SavingsEntry> = emptyList(),
+    val savingsPlans: List<SavingsPlan> = emptyList(),
 )
 
 val emptyData = FinanceData()
@@ -219,9 +330,31 @@ fun normaliseData(data: FinanceData): FinanceData = FinanceData(
     transactions = data.transactions.map { it.copy(category = migrateCategory(it.category)) },
     budgetLines = data.budgetLines.map { it.copy(category = migrateCategory(it.category)) },
     incomePlans = data.incomePlans.map { migrateIncomePlan(it.month, it.amounts) },
-    // A snapshot saved before categories were editable has none stored, so it
-    // is given the starting set rather than an app with no categories at all.
     categories = data.categories.map { it.copy(name = migrateCategory(it.name)) },
+    savingsPots = data.savingsPots.map { pot ->
+        pot.copy(
+            name = pot.name.trim(),
+            // A target of zero and no target say the same thing; only one of
+            // them makes the screens draw a progress bar to nowhere.
+            target = pot.target?.takeIf { it > 0 },
+        )
+    },
+    savingsEntries = data.savingsEntries.map { entry ->
+        entry.copy(
+            // A withdrawal has no source, and one left on it would be read as
+            // money that came from somewhere.
+            source = if (entry.direction == SavingsDirection.IN) {
+                entry.source ?: SavingsSource.INCOME
+            } else {
+                null
+            },
+        )
+    },
+    savingsPlans = data.savingsPlans.map { plan ->
+        // A figure that is zero or negative is dropped rather than kept: an
+        // absent key and a plan of nothing say the same thing.
+        plan.copy(amounts = plan.amounts.filterValues { it.isFinite() && it > 0 })
+    },
 ).let { normalised ->
     // A snapshot saved before categories were records of their own has none
     // stored. Its own rows say which ones it used, and that is what it gets

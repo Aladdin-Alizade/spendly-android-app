@@ -20,10 +20,12 @@ private val SETUP_HINTS: List<Pair<Regex, String>> = listOf(
     Regex("hesaba daxil olunmayıb|not signed in|JWT|session|sessiya", RegexOption.IGNORE_CASE) to
         "Sessiya bitib. Yenidən daxil olun.",
 
-    // 42703 is Postgres, PGRST204 is PostgREST's schema cache. Both mean the
+    // 42703 is Postgres, PGRST204 is PostgREST's schema cache, 42P10 is an
+    // upsert naming a key the table does not have yet. All three mean the
     // table is there but is an older version of it than the app expects.
     Regex(
-        "42703|PGRST204|column .* does not exist|could not find the .* column",
+        "42703|42P10|PGRST204|column .* does not exist|" +
+            "could not find the .* column|no unique or exclusion constraint",
         RegexOption.IGNORE_CASE,
     ) to
         "Verilənlər bazası köhnə quruluşdadır. Supabase SQL redaktorunda " +

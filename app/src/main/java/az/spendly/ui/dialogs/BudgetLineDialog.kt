@@ -105,5 +105,3 @@ fun BudgetLineDialog(
     }
 }
 
-private fun trimZeros(value: Double): String =
-    if (value == value.toLong().toDouble()) value.toLong().toString() else value.toString()

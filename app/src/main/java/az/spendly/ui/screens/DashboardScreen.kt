@@ -53,6 +53,7 @@ import az.spendly.domain.UnexpectedReason
 import az.spendly.domain.categoryBreakdown
 import az.spendly.domain.comparisonLabel
 import az.spendly.domain.dailyActivity
+import az.spendly.domain.depositedFromIncome
 import az.spendly.domain.expectedSplit
 import az.spendly.domain.flowBuckets
 import az.spendly.domain.formatAZN
@@ -65,14 +66,17 @@ import az.spendly.domain.incomeSources
 import az.spendly.domain.insights
 import az.spendly.domain.isSingleMonth
 import az.spendly.domain.largestTransactions
+import az.spendly.domain.monthOf
 import az.spendly.domain.previousPeriod
 import az.spendly.domain.recurringCommitments
 import az.spendly.domain.resolvePeriod
 import az.spendly.domain.round2
-import az.spendly.domain.runningBalance
+import az.spendly.domain.savingsBalance
+import az.spendly.domain.spendableBalance
 import az.spendly.domain.spendingPace
 import az.spendly.domain.summarisePeriod
 import az.spendly.domain.today
+import az.spendly.domain.totalHoldings
 import az.spendly.domain.transactionsInPeriod
 import az.spendly.domain.weekdayOf
 import az.spendly.domain.weekdayPattern
@@ -118,10 +122,14 @@ fun DashboardScreen(
 
     val summary = remember(data, period) { summarisePeriod(data, period) }
     val prior = remember(data, period) { summarisePeriod(data, previousPeriod(period)) }
-    val balance = remember(data, period) { runningBalance(data.transactions, period.months.last()) }
+    val balance = remember(data, period) { spendableBalance(data, period.months.last()) }
     val priorBalance = remember(data, period) {
-        runningBalance(data.transactions, previousPeriod(period).months.last())
+        spendableBalance(data, previousPeriod(period).months.last())
     }
+    val saved = remember(data, period) {
+        savingsBalance(data.savingsEntries, period.months.last())
+    }
+    val holdings = remember(data, period) { totalHoldings(data, period.months.last()) }
     val categories = remember(data, period) { categoryBreakdown(data, period) }
     val split = remember(data, period) { expectedSplit(data, period) }
     val buckets = remember(data, period) { flowBuckets(data, period) }
@@ -134,12 +142,21 @@ fun DashboardScreen(
         if (period.months.size == 1) spendingPace(data, period.months.first(), today()) else null
     }
     val periodTransactions = remember(data, period) { transactionsInPeriod(data.transactions, period) }
+    // Movements in this period, and what of them left the spendable side.
+    val periodEntries = remember(data, period) {
+        data.savingsEntries.filter { monthOf(it.date) in period.months }
+    }
+    val deposited = remember(data, period) {
+        round2(period.months.sumOf { depositedFromIncome(data.savingsEntries, it) })
+    }
 
     val spent = categories.filter { it.actual > 0 }
     // Colours come from the ranked breakdown, so a category is the same colour
     // in the ring, the ranking and the plan comparison.
     val colorOf = rememberCategoryColors(categories.map { it.category })
-    val hasActivity = periodTransactions.isNotEmpty()
+    // A month whose only record is a savings movement is not an empty month:
+    // the balance moved, and saying "nothing here" next to that reads as a bug.
+    val hasActivity = periodTransactions.isNotEmpty() || periodEntries.isNotEmpty()
     val hasComparison = prior.transactionCount > 0
     val budgetLeft = round2(summary.plannedExpenses - summary.expenses)
 
@@ -175,7 +192,12 @@ fun DashboardScreen(
                         formatMonth(period.months.first())
                     } else {
                         "${formatMonth(period.months.first())} — ${formatMonth(period.months.last())}"
-                    } + " · ${periodTransactions.size} əməliyyat",
+                    } + " · ${periodTransactions.size} əməliyyat" +
+                        if (periodEntries.isNotEmpty()) {
+                            " · ${periodEntries.size} yığım hərəkəti"
+                        } else {
+                            ""
+                        },
                     style = MaterialTheme.typography.bodySmall,
                     color = colors.textMuted,
                 )
@@ -201,12 +223,25 @@ fun DashboardScreen(
 
         /* --- where I stand -------------------------------------------- */
         item {
-            Panel(title = "Balans") {
+            Panel(
+                title = "Balans",
+                note = if (saved > 0) "xərcləyə bilən" else null,
+            ) {
                 Text(
                     text = formatAZN(balance),
                     style = MaterialTheme.typography.displaySmall,
                     color = if (balance < 0) colors.negative else colors.text,
                 )
+
+                // Money in a pot is money you have, so a balance that excludes
+                // it needs the rest said next to it or it reads as a loss.
+                if (saved > 0) {
+                    Text(
+                        text = "yığım ${formatAZN(saved)} · cəmi ${formatAZN(holdings)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textMuted,
+                    )
+                }
                 Row(
                     modifier = Modifier.padding(top = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -333,6 +368,20 @@ fun DashboardScreen(
                         text = summary.savingsRate
                             ?.let { "gəlirin ${(it * 100).roundToInt()}%-i" }
                             ?: "Gəlir qeydə alınmayıb",
+                    )
+                }
+
+                // "Qalan" is income minus spending, and a deposit is neither —
+                // so this figure still holds money the balance above has
+                // already moved into a pot. Two right answers to two different
+                // questions, which only confuse each other when nobody says so.
+                if (deposited > 0) {
+                    Text(
+                        text = "bunun ${formatAZN(deposited)} hissəsi yığım qabına keçib — " +
+                            "balansda yox, qabdadır",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textMuted,
+                        modifier = Modifier.padding(top = 8.dp),
                     )
                 }
             }

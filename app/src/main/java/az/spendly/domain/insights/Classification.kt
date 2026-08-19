@@ -18,6 +18,8 @@ import az.spendly.domain.FinanceData
 import az.spendly.domain.MonthKey
 import az.spendly.domain.TransactionType
 import az.spendly.domain.actualIncome
+import az.spendly.domain.depositedFromIncome
+import az.spendly.domain.savingsBalance
 import az.spendly.domain.monthOf
 import az.spendly.domain.round2
 import az.spendly.domain.shiftMonth
@@ -239,20 +241,28 @@ fun spendingRigidity(split: SpendingSplit): Rigidity? {
 data class FundPace(
     /** Income minus everything spent, this month. */
     val retainedMonthly: Double,
-    /** What was deliberately put into a saving category. */
+    /** What was deliberately put away this month. */
     val savingMonthly: Double,
-    /** Months to the target at the retained rate. Null when nothing is retained. */
+    /** Already in the savings pots, as of the end of this month. */
+    val saved: Double,
+    /** What is still missing, floored at zero once the target is met. */
+    val remaining: Double,
+    /** Months to what is left at the retained rate. Null when nothing is retained. */
     val monthsAtRetained: Double?,
-    /** Months to the target at the deliberate-saving rate. */
+    /** Months to what is left at the deliberate-saving rate. */
     val monthsAtSaving: Double?,
 )
 
 /**
- * How long the target takes, at two different rates.
+ * How long the rest of the target takes, at two different rates.
  *
  * The gap between them is the whole point. Money retained is money that was
  * not spent, which is not the same as money put away — and the difference
  * between "seven months" and "three years" is what makes that concrete.
+ *
+ * Both counts start from what is already in the pots. Estimating from the full
+ * target once the money is visible would be telling somebody they are at the
+ * beginning of a journey they are halfway through.
  */
 fun fundPace(data: FinanceData, month: MonthKey, target: Double): FundPace? {
     val split = classifySpending(data, month)
@@ -260,13 +270,22 @@ fun fundPace(data: FinanceData, month: MonthKey, target: Double): FundPace? {
     if (income <= 0 || target <= 0) return null
 
     val retainedMonthly = round2(income - split.total)
-    val savingMonthly = split.saving
+    // Deposits made into a pot out of income, plus anything still recorded the
+    // old way — as spending into a category marked `saving`. Both are the same
+    // act, and an account part-way through the conversion holds some of each.
+    val savingMonthly = round2(
+        split.saving + depositedFromIncome(data.savingsEntries, month),
+    )
+    val saved = savingsBalance(data.savingsEntries, month)
+    val remaining = round2(maxOf(target - saved, 0.0))
 
     return FundPace(
         retainedMonthly = retainedMonthly,
         savingMonthly = savingMonthly,
-        monthsAtRetained = if (retainedMonthly > 0) target / retainedMonthly else null,
-        monthsAtSaving = if (savingMonthly > 0) target / savingMonthly else null,
+        saved = saved,
+        remaining = remaining,
+        monthsAtRetained = if (retainedMonthly > 0) remaining / retainedMonthly else null,
+        monthsAtSaving = if (savingMonthly > 0) remaining / savingMonthly else null,
     )
 }
 

@@ -13,6 +13,11 @@ import az.spendly.data.mergeRows
 import az.spendly.domain.BudgetLine
 import az.spendly.domain.FinanceData
 import az.spendly.domain.IncomePlan
+import az.spendly.domain.SavingsDirection
+import az.spendly.domain.SavingsEntry
+import az.spendly.domain.SavingsPlan
+import az.spendly.domain.SavingsPot
+import az.spendly.domain.SavingsSource
 import az.spendly.domain.Transaction
 import az.spendly.domain.TransactionType
 import org.junit.Assert.assertEquals
@@ -105,6 +110,15 @@ class MergeRowsTest {
     }
 }
 
+private fun savingsEntry(id: String, amount: Double = 400.0) = SavingsEntry(
+    id = id,
+    date = "2026-08-05",
+    pot = "Ehtiyat fondu",
+    amount = amount,
+    direction = SavingsDirection.IN,
+    source = SavingsSource.INCOME,
+)
+
 class MergeFinanceDataTest {
 
     private val base = FinanceData(
@@ -112,6 +126,9 @@ class MergeFinanceDataTest {
         budgetLines = listOf(BudgetLine("b1", "2026-08", "Ev", "Əlavə xərclər", 230.0)),
         incomePlans = listOf(IncomePlan("2026-08", mapOf("Maaş" to 990.0))),
         categories = sheetCategories(),
+        savingsPots = listOf(SavingsPot("p1", "Ehtiyat fondu")),
+        savingsEntries = listOf(savingsEntry("s1")),
+        savingsPlans = listOf(SavingsPlan("2026-08", mapOf("Ehtiyat fondu" to 300.0))),
     )
 
     @Test
@@ -120,17 +137,24 @@ class MergeFinanceDataTest {
             // Added on the phone with no signal.
             transactions = base.transactions + t("offline", amount = 25.0),
             incomePlans = listOf(IncomePlan("2026-08", mapOf("Maaş" to 1200.0))),
+            savingsEntries = base.savingsEntries + savingsEntry("offline-s", amount = 120.0),
+            savingsPlans = listOf(SavingsPlan("2026-08", mapOf("Ehtiyat fondu" to 500.0))),
         )
         val remote = base.copy(
             // Added in the browser meanwhile.
             transactions = base.transactions + t("browser", amount = 60.0),
             budgetLines = base.budgetLines + BudgetLine("b2", "2026-08", "İnternet", "Telefon və internet", 15.0),
+            savingsEntries = base.savingsEntries + savingsEntry("browser-s", amount = 75.0),
         )
 
         val merged = mergeFinanceData(base, local, remote)
 
         assertEquals(listOf("a", "browser", "offline"), merged.transactions.map { it.id })
         assertEquals(listOf("b1", "b2"), merged.budgetLines.map { it.id })
+        assertEquals(listOf("s1", "browser-s", "offline-s"), merged.savingsEntries.map { it.id })
+        // The savings plan is keyed by month like the income one, and this
+        // device is the one that changed it.
+        assertEquals(mapOf("Ehtiyat fondu" to 500.0), merged.savingsPlans.first().amounts)
         // The plan was edited here, so this device's figure stands.
         assertEquals(mapOf("Maaş" to 1200.0), merged.incomePlans.first().amounts)
     }

@@ -47,7 +47,7 @@ import az.spendly.domain.categoriesOfType
 import az.spendly.domain.formatAZN
 import az.spendly.domain.formatMonth
 import az.spendly.domain.knownMonths
-import az.spendly.domain.runningBalance
+import az.spendly.domain.totalHoldings
 import az.spendly.ui.components.Micro
 import az.spendly.ui.theme.Radius
 import az.spendly.ui.theme.spendlyColors
@@ -224,7 +224,7 @@ fun ProfileDialog(
             Stat("Kateqoriya", data.categories.size.toString(), Modifier.weight(1f))
             Stat(
                 "Balans",
-                formatAZN(runningBalance(data.transactions)),
+                formatAZN(totalHoldings(data)),
                 Modifier.weight(1f),
             )
         }

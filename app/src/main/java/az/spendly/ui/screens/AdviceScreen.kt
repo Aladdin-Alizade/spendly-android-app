@@ -66,6 +66,7 @@ import az.spendly.domain.insights.spendingRigidity
 import az.spendly.domain.insights.methodsNeedingReview
 import az.spendly.domain.insights.needsReview
 import az.spendly.domain.today
+import az.spendly.ui.components.Meter
 import az.spendly.ui.components.Micro
 import az.spendly.ui.components.Panel
 import az.spendly.ui.components.Pill
@@ -314,7 +315,14 @@ fun AdviceScreen(data: FinanceData, month: MonthKey, modifier: Modifier = Modifi
 
         /* --- a target, and only a target ------------------------------ */
         item {
-            Panel(title = "Təcili ehtiyat fondu", note = "yalnız hədəf") {
+            Panel(
+                title = "Təcili ehtiyat fondu",
+                note = if (pace != null && pace.saved > 0) {
+                    "hədəf və irəliləyiş"
+                } else {
+                    "yalnız hədəf"
+                },
+            ) {
                 if (fund != null) {
                     Micro("Zəruri aylıq xərc (median)")
                     Text(
@@ -363,29 +371,55 @@ fun AdviceScreen(data: FinanceData, month: MonthKey, modifier: Modifier = Modifi
                         )
                     }
 
+                    // Progress, now that the pots make it knowable. Without
+                    // them this panel could only ever name a target.
+                    if (pace != null && pace.saved > 0) {
+                        Box(modifier = Modifier.padding(top = 10.dp)) {
+                            Meter(pace.saved, fund.target)
+                        }
+                        Text(
+                            text = "yığımınız ${formatAZN(pace.saved)} — hədəfin " +
+                                "${((pace.saved / fund.target) * 100).roundToInt()}%-i" +
+                                if (pace.remaining > 0) {
+                                    ", ${formatAZN(pace.remaining)} qalıb"
+                                } else {
+                                    " · hədəf yığılıb"
+                                },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.textMuted,
+                        )
+                    }
+
                     Reading(
                         buildString {
                             append("Gəliriniz dayansa, bu məbləğ təxminən ")
                             append("${fund.months} ay əsas xərclərinizi qarşılayar.")
-                            pace?.monthsAtRetained?.let {
-                                append(" Bu ay qalan ${formatAZN(pace.retainedMonthly)} hər ")
-                                append("ay qalsa, hədəfə ")
-                                append(String.format(Locale.US, "%.1f", it))
-                                append(" ayda çatarsınız.")
-                            }
-                            pace?.monthsAtSaving?.let {
-                                append(" Yalnız yığıma qoyduğunuz ")
-                                append("${formatAZN(pace.savingMonthly)} ilə isə ")
-                                append("${it.roundToInt()} ay çəkər — «qalan» ilə «yığılan» ")
-                                append("arasındakı fərq budur.")
+                            if (pace != null && pace.remaining > 0) {
+                                pace.monthsAtRetained?.let {
+                                    append(" Bu ay qalan ${formatAZN(pace.retainedMonthly)} ")
+                                    append("hər ay qalsa, qalan məbləğə ")
+                                    append(String.format(Locale.US, "%.1f", it))
+                                    append(" ayda çatarsınız.")
+                                }
+                                pace.monthsAtSaving?.let {
+                                    append(" Yalnız qaba qoyduğunuz ")
+                                    append("${formatAZN(pace.savingMonthly)} ilə isə ")
+                                    append("${it.roundToInt()} ay çəkər — «qalan» ilə ")
+                                    append("«yığılan» arasındakı fərq budur.")
+                                }
                             }
                         },
                     )
 
                     FrameworkNote(
-                        "CFPB vahid rəqəm vermir — məbləğ vəziyyətinizdən asılıdır. Tətbiq " +
-                            "hesab qalığınızı görmür, ona görə hədəfə nə qədər yaxın " +
-                            "olduğunuzu deyə bilmir.",
+                        "CFPB vahid rəqəm vermir — məbləğ vəziyyətinizdən asılıdır." +
+                            if (pace != null && pace.saved > 0) {
+                                " İrəliləyiş yığım qablarınızın cəminə görə hesablanır; " +
+                                    "tətbiq bank hesablarınızı görmür."
+                            } else {
+                                " Yığım qablarınıza qoyduğunuz məbləğlər burada irəliləyiş " +
+                                    "kimi görünəcək."
+                            },
                     )
                 } else {
                     Missing(

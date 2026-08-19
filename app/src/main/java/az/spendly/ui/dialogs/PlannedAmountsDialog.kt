@@ -12,21 +12,32 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import az.spendly.domain.PlannedIncomeRow
 import az.spendly.domain.formatAZN
 import az.spendly.domain.parseAmount
 import az.spendly.ui.theme.spendlyColors
 
+/** One line of a plan: something the account holds, and whether it still does. */
+data class PlannedRow(
+    val name: String,
+    /** The plan holds a figure for something that no longer exists. */
+    val orphaned: Boolean,
+)
+
 /**
- * The planned side of income, one field per income category.
+ * A planned figure per named thing: income per category, savings per pot.
  *
- * The sheet had two fixed rows here. Income categories are the user's own now,
- * so the form is built from them — adding a category adds a line to plan for,
- * and no category is special.
+ * Both sides of the plan ask the same question in the same shape, so they get
+ * the same form. The list is built from what the account actually holds —
+ * adding a category or a pot adds a line to plan for, and none is special.
  */
 @Composable
-fun IncomePlanDialog(
-    rows: List<PlannedIncomeRow>,
+fun PlannedAmountsDialog(
+    title: String,
+    /** Shown when there is nothing to plan for yet, naming the way out. */
+    emptyText: String,
+    /** One per row, plus any figure a removed one left behind — editable here
+     *  so it can be cleared rather than stranded. */
+    rows: List<PlannedRow>,
     amounts: Map<String, Double>,
     onSave: (Map<String, Double>) -> Unit,
     onDismiss: () -> Unit,
@@ -34,9 +45,7 @@ fun IncomePlanDialog(
     val colors = spendlyColors
     val inputs = remember {
         mutableStateMapOf<String, String>().apply {
-            rows.forEach { row ->
-                put(row.category, (amounts[row.category] ?: 0.0).let { trimZeros(it) })
-            }
+            rows.forEach { row -> put(row.name, trimZeros(amounts[row.name] ?: 0.0)) }
         }
     }
     var showErrors by remember { mutableStateOf(false) }
@@ -47,11 +56,11 @@ fun IncomePlanDialog(
     }
 
     val total = rows.sumOf { row ->
-        parseAmount(inputs[row.category].orEmpty())?.takeIf { it > 0 } ?: 0.0
+        parseAmount(inputs[row.name].orEmpty())?.takeIf { it > 0 } ?: 0.0
     }
 
     DialogShell(
-        title = "Planlaşdırılan gəlir",
+        title = title,
         onDismiss = onDismiss,
         footer = {
             Spacer(Modifier.weight(1f))
@@ -59,12 +68,12 @@ fun IncomePlanDialog(
             Button(
                 enabled = rows.isNotEmpty(),
                 onClick = {
-                    if (rows.any { errorFor(it.category) != null }) {
+                    if (rows.any { errorFor(it.name) != null }) {
                         showErrors = true
                     } else {
                         onSave(
                             rows.associate { row ->
-                                row.category to (parseAmount(inputs[row.category].orEmpty()) ?: 0.0)
+                                row.name to (parseAmount(inputs[row.name].orEmpty()) ?: 0.0)
                             },
                         )
                     }
@@ -74,17 +83,17 @@ fun IncomePlanDialog(
     ) {
         if (rows.isEmpty()) {
             Text(
-                text = "Hələ gəlir kateqoriyası yoxdur. Kateqoriyalar bölməsindən əlavə edin.",
+                text = emptyText,
                 style = MaterialTheme.typography.bodyMedium,
                 color = colors.textMuted,
             )
         } else {
             rows.forEach { row ->
                 LabelledField(
-                    label = row.category + if (row.orphaned) " · kateqoriya silinib" else "",
-                    value = inputs[row.category].orEmpty(),
-                    onValueChange = { inputs[row.category] = it },
-                    error = if (showErrors) errorFor(row.category) else null,
+                    label = row.name + if (row.orphaned) " · silinib" else "",
+                    value = inputs[row.name].orEmpty(),
+                    onValueChange = { inputs[row.name] = it },
+                    error = if (showErrors) errorFor(row.name) else null,
                     placeholder = "0.00",
                     numeric = true,
                 )
@@ -100,6 +109,3 @@ fun IncomePlanDialog(
         }
     }
 }
-
-private fun trimZeros(value: Double): String =
-    if (value == value.toLong().toDouble()) value.toLong().toString() else value.toString()

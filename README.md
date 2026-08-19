@@ -166,7 +166,7 @@ announcement with no app in it.
 
 ---
 
-## The four screens
+## The five screens
 
 The month you are looking at is set in the header, and applies everywhere.
 
@@ -235,12 +235,53 @@ This is not financial advice, and the app says so where it matters.
 Everything recorded for the month, newest first. Filter to income or expenses
 with the tabs. Tap any row to edit or delete it.
 
+### Yığım — money set aside
+
+Savings are a third flow here, not a kind of spending. Money moved into a pot
+has not been consumed, so it appears in no spending total; money taken back out
+was not earned, so it appears in no income total.
+
+- **Harada dayanırsınız** gives the three figures that add up: what you can
+  spend, what you have put away, and the total. The balance on İcmal is the
+  first of them.
+- **Qablar** is one card per goal. Give a pot a target and it draws a progress
+  bar; without one the pot simply reports its balance.
+- **Hərəkətlər** is every deposit and withdrawal of the month. A deposit says
+  where the money came from, and that answer is the point of the whole screen:
+  - **Gəlirimdən** — set aside out of money you had already earned. It leaves
+    the spendable side without being spending.
+  - **Kənardan** — a gift, a sale, a repaid loan that went straight to the pot.
+    It touches neither your income nor your spending, so it cannot inflate the
+    percentages on Məsləhətlər.
+
+Every figure on this screen is as of the end of the month in the header, like
+everywhere else in the app.
+
+Once a pot has something in it, the emergency-fund panel stops showing a target
+alone and starts showing how far along you are. To hold yourself to a monthly
+figure rather than a final one, tap **Yığım** on the Büdcə plan card.
+
+If you recorded savings the older way — as spending into a category marked
+*Yığım* — the screen offers to convert those transactions into deposits. It
+deletes the transactions, so it asks first.
+
 ### Büdcə — the plan
 
-What the month is *supposed* to look like: planned income per category,
-planned spending lines grouped by category next to what you actually spent,
-the planned remainder, your own category lists, and the delete tools at the
-very bottom.
+Two halves, behind a switch at the top. **Plan** is the month; **Quraşdırma**
+is the setup behind it — categories and the delete tools — which is written
+once and rarely touched, so it no longer scrolls past on the way to the month.
+An account with no categories yet opens on Quraşdırma, because that is what it
+needs first.
+
+**Plan** opens on one card of four figures: planned income, planned spending,
+planned savings and what is left, each with what actually happened under it.
+Income and savings are written by hand, so those two are the ones you can tap;
+the other two are worked out from them. Under the card are the planned spending
+lines, grouped by category next to what you actually spent.
+
+Only deposits made out of income count towards the savings plan: meeting it out
+of a windfall is not meeting it. And where a savings plan exists, what is left
+is reported after it — the line under the card spells the arithmetic out.
 
 ---
 
@@ -252,12 +293,17 @@ very bottom.
 | Change or remove one entry | Tap it → edit, or **Sil** → **Silinməni təsdiqlə** |
 | Look at another month | The month arrows in the header, or tap the month name |
 | Look at a longer stretch | The period buttons on İcmal: **Ay · Keçən · 3 ay · 6 ay · İl** |
-| Start planning a month | **Büdcə** → **Sətir əlavə et**, or **Planı köçür** once there is an earlier month |
+| Start planning a month | **Büdcə** → **Plan** → **Sətir əlavə et**, or **Planı köçür** once there is an earlier month |
 | Add a planned expense | **Büdcə** → **Sətir əlavə et** |
-| Set expected income | **Büdcə** → **Planlaşdırılan gəlir** → **Dəyiş** |
-| Add, rename or classify a category | **Büdcə** → **Kateqoriyalar** |
-| Wipe one month's plan | **Büdcə** → **Silmə** → **Planı sil** → **Təsdiqlə** |
-| Wipe everything | **Büdcə** → **Silmə** → **Bütün məlumatları sil** |
+| Set expected income | **Büdcə** → tap **Gəlir** on the plan card |
+| Start saving | **Yığım** → **Qab əlavə et**, name the goal, optionally set a target |
+| Record money set aside | **Yığım** → **+** → **Qoyuram** → **Gəlirimdən** |
+| Record a windfall you saved | The same, but **Kənardan** — it stays out of your income figures |
+| Take money out of a pot | **Yığım** → **+** → **Götürürəm**, then record the spending as a normal transaction |
+| Plan what to save each month | **Büdcə** → tap **Yığım** on the plan card |
+| Add, rename or classify a category | **Büdcə** → **Quraşdırma** → **Kateqoriyalar** |
+| Wipe one month's plan | **Büdcə** → **Quraşdırma** → **Silmə** → **Planı sil** → **Təsdiqlə** |
+| Wipe everything | **Büdcə** → **Quraşdırma** → **Silmə** → **Bütün məlumatları sil** |
 | See the account, or sign out | The round button at the top right |
 | Change your password | The account button → **Şifrə** → **Dəyiş** |
 | Reset a forgotten password | **Şifrənizi unutmusunuz?** on the sign-in screen |
@@ -278,8 +324,8 @@ should move to first.
 
 **A new account starts empty.** No categories, no plan, no figures: those are
 the shape somebody gives their own money, and the app does not guess it. The
-first stop is **Büdcə → Kateqoriyalar**, which is why that section sits above
-the delete tools rather than below them.
+first stop is **Büdcə → Quraşdırma → Kateqoriyalar**, which is where the
+screen opens while the list is empty.
 
 **Always on the device.** One JSON file in the app's own storage. Every change
 is written there first, before anything is asked of the network — so an edit
@@ -301,8 +347,9 @@ Then, in the Supabase dashboard:
 
 1. **Create the tables** — paste [`supabase/schema.sql`](supabase/schema.sql)
    into the SQL editor and run it. Running it again later is safe, and is how
-   you pick up changes — the most recent is the key on (user_id, id), without
-   which the second person to register cannot save anything.
+   you pick up changes — the `savings_pots`, `savings_entries` and
+   `savings_plans` tables are the most recent, and the app cannot save a pot
+   until they exist.
 2. **Turn on email sign-in** — Authentication → Sign In / Providers → Email,
    with sign-ups allowed.
 
@@ -352,7 +399,7 @@ app/src/main/java/az/spendly/
   domain/insights/  The advice engine, its thresholds and its references.
   data/        The persistence boundary: one interface, two implementations.
   store/       FinanceViewModel and AuthViewModel — the app's state.
-  ui/          Compose: the theme, the three screens, the charts, the dialogs.
+  ui/          Compose: the theme, the screens, the charts, the dialogs.
 app/src/test/  The suite, over domain/ and data/.
 ```
 

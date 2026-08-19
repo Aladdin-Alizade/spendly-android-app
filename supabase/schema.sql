@@ -85,6 +85,56 @@ create table if not exists public.income_plans (
   primary key (user_id, month)
 );
 
+-- Money set aside. A pot is a goal with a name; an entry is one movement into
+-- or out of it.
+--
+-- These are not transactions and must not be stored as any: setting money
+-- aside does not consume it, so a deposit belongs in no spending total, and a
+-- withdrawal belongs in no income total. Keeping them apart is the whole point
+-- of the table — it is what lets the app say "spendable" and "saved" as two
+-- different figures that still add up to one.
+create table if not exists public.savings_pots (
+  id         text not null,
+  user_id    uuid not null default auth.uid()
+               references auth.users (id) on delete cascade,
+  name       text not null check (length(btrim(name)) > 0),
+  -- What the pot is being filled towards. Null means no target, which the
+  -- screens report as a balance rather than as progress towards nothing.
+  target     numeric(14, 2) check (target is null or target > 0),
+  created_at timestamptz not null default now(),
+  -- Keyed by owner as well, for the reason given on `transactions`.
+  primary key (user_id, id),
+  unique (user_id, name)
+);
+
+create table if not exists public.savings_entries (
+  id         text not null,
+  user_id    uuid not null default auth.uid()
+               references auth.users (id) on delete cascade,
+  date       date not null,
+  -- The pot's name, the way every other row in this schema names what it
+  -- belongs to. A rename carries the entries with it.
+  pot        text not null,
+  -- Positive, always. `direction` carries the sign.
+  amount     numeric(14, 2) not null check (amount > 0),
+  direction  text not null check (direction in ('in', 'out')),
+  -- Where a deposit came from, and the reason this table exists at all:
+  --   income   — set aside out of money already earned, so it leaves the
+  --              spendable side without being spending.
+  --   external — arrived from outside straight into the pot, so it touches
+  --              neither income nor spending.
+  -- A withdrawal has no source, and must not carry one.
+  source     text check (
+               (direction = 'in' and source in ('income', 'external')) or
+               (direction = 'out' and source is null)),
+  note       text,
+  created_at timestamptz not null default now(),
+  primary key (user_id, id)
+);
+
+create index if not exists savings_entries_user_date_idx
+  on public.savings_entries (user_id, date);
+
 -- Brings a project keyed on the id alone up to date.
 --
 -- A bare `id` primary key is global, but ids are not: accounts made while the
@@ -157,12 +207,15 @@ alter table public.transactions enable row level security;
 alter table public.budget_lines enable row level security;
 alter table public.income_plans enable row level security;
 alter table public.categories enable row level security;
+alter table public.savings_pots enable row level security;
+alter table public.savings_entries enable row level security;
 
 do $$
 declare
   t text;
 begin
-  foreach t in array array['transactions', 'budget_lines', 'income_plans', 'categories']
+  foreach t in array array['transactions', 'budget_lines', 'income_plans',
+                           'categories', 'savings_pots', 'savings_entries']
   loop
     execute format('drop policy if exists owner_select on public.%I', t);
     execute format('drop policy if exists owner_insert on public.%I', t);

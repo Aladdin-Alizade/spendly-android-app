@@ -206,7 +206,7 @@ fun TransactionDialog(
 
 /** The date, as a field that opens the calendar rather than one to type into. */
 @Composable
-private fun DateField(label: String, value: String, error: String?, onClick: () -> Unit) {
+internal fun DateField(label: String, value: String, error: String?, onClick: () -> Unit) {
     val colors = spendlyColors
     Column(modifier = Modifier.fillMaxWidth()) {
         Micro(label)
@@ -240,14 +240,14 @@ private fun DateField(label: String, value: String, error: String?, onClick: () 
 }
 
 /** `2026-08-19` -> `19 Avqust 2026`. */
-private fun formatDayLong(date: String): String {
+internal fun formatDayLong(date: String): String {
     val day = date.substring(8, 10).trimStart('0')
     return "$day ${formatMonth(date.substring(0, 7))}"
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DatePickerSheet(initial: String, onPick: (String) -> Unit, onDismiss: () -> Unit) {
+internal fun DatePickerSheet(initial: String, onPick: (String) -> Unit, onDismiss: () -> Unit) {
     val startMillis = remember(initial) {
         val date = if (isValidDate(initial)) LocalDate.parse(initial) else LocalDate.now()
         date.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
@@ -276,5 +276,3 @@ private fun DatePickerSheet(initial: String, onPick: (String) -> Unit, onDismiss
 }
 
 /** `12.5` reads better in a field than `12.5000000001`. */
-private fun trimZeros(value: Double): String =
-    if (value == value.toLong().toDouble()) value.toLong().toString() else value.toString()

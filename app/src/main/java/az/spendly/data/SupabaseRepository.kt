@@ -15,6 +15,11 @@ import az.spendly.domain.CategoryDef
 import az.spendly.domain.CategoryKind
 import az.spendly.domain.FinanceData
 import az.spendly.domain.IncomePlan
+import az.spendly.domain.SavingsDirection
+import az.spendly.domain.SavingsEntry
+import az.spendly.domain.SavingsPlan
+import az.spendly.domain.SavingsPot
+import az.spendly.domain.SavingsSource
 import az.spendly.domain.Transaction
 import az.spendly.domain.TransactionType
 import az.spendly.domain.categoriesFromData
@@ -61,19 +66,25 @@ class SupabaseRepository(private val session: SupabaseSession) : FinanceReposito
     override suspend fun load(): FinanceData = withContext(Dispatchers.IO) {
         requireUser()
 
-        val (transactions, budgetLines, incomePlans, categories) = coroutineScope {
+        val rows = coroutineScope {
             val a = async { rest.select("transactions") }
             val b = async { rest.select("budget_lines") }
             val c = async { rest.select("income_plans") }
             val d = async { rest.select("categories") }
-            Rows(a.await(), b.await(), c.await(), d.await())
+            val e = async { rest.select("savings_pots") }
+            val f = async { rest.select("savings_entries") }
+            val g = async { rest.select("savings_plans") }
+            Rows(a.await(), b.await(), c.await(), d.await(), e.await(), f.await(), g.await())
         }
 
         val loaded = FinanceData(
-            transactions = transactions.map { toTransaction(it.jsonObject) },
-            budgetLines = budgetLines.map { toBudgetLine(it.jsonObject) },
-            incomePlans = incomePlans.map { toIncomePlan(it.jsonObject) },
-            categories = categories.map { toCategory(it.jsonObject) },
+            transactions = rows.transactions.map { toTransaction(it.jsonObject) },
+            budgetLines = rows.budgetLines.map { toBudgetLine(it.jsonObject) },
+            incomePlans = rows.incomePlans.map { toIncomePlan(it.jsonObject) },
+            categories = rows.categories.map { toCategory(it.jsonObject) },
+            savingsPots = rows.savingsPots.map { toPot(it.jsonObject) },
+            savingsEntries = rows.savingsEntries.map { toEntry(it.jsonObject) },
+            savingsPlans = rows.savingsPlans.map { toSavingsPlan(it.jsonObject) },
         )
 
         // An account created before categories were stored has none of its own.
@@ -150,6 +161,36 @@ class SupabaseRepository(private val session: SupabaseSession) : FinanceReposito
         rest.upsert("categories", categories.upserts, onConflict = BY_OWNER)
         rest.deleteIn("categories", "id", categories.removed)
 
+        // --- savings pots -------------------------------------------------------
+        val pots = changedRows(before.savingsPots, after.savingsPots, { it.id }) { pot ->
+            buildJsonObject {
+                put("id", pot.id)
+                put("user_id", userId)
+                put("name", pot.name)
+                val target = pot.target
+                if (target == null) put("target", JsonNull) else put("target", target)
+            }
+        }
+        rest.upsert("savings_pots", pots.upserts, onConflict = BY_OWNER)
+        rest.deleteIn("savings_pots", "id", pots.removed)
+
+        // --- savings entries ----------------------------------------------------
+        val entries = changedRows(before.savingsEntries, after.savingsEntries, { it.id }) {
+            buildJsonObject {
+                put("id", it.id)
+                put("user_id", userId)
+                put("date", it.date)
+                put("pot", it.pot)
+                put("amount", it.amount)
+                put("direction", it.direction.wire)
+                val source = it.source
+                if (source == null) put("source", JsonNull) else put("source", source.wire)
+                if (it.note == null) put("note", JsonNull) else put("note", it.note)
+            }
+        }
+        rest.upsert("savings_entries", entries.upserts, onConflict = BY_OWNER)
+        rest.deleteIn("savings_entries", "id", entries.removed)
+
         // --- income plans (keyed by month, not by a generated id) -------------
         val plans = changedRows(before.incomePlans, after.incomePlans, { it.month }) { plan ->
             buildJsonObject {
@@ -163,6 +204,20 @@ class SupabaseRepository(private val session: SupabaseSession) : FinanceReposito
         }
         rest.upsert("income_plans", plans.upserts, onConflict = "user_id,month")
         rest.deleteIn("income_plans", "month", plans.removed)
+
+        // --- savings plans (keyed by month, like the income side) ------------
+        val savingsPlans = changedRows(before.savingsPlans, after.savingsPlans, { it.month }) { plan ->
+            buildJsonObject {
+                put("user_id", userId)
+                put("month", plan.month)
+                put(
+                    "amounts",
+                    JsonObject(plan.amounts.mapValues { (_, amount) -> JsonPrimitive(amount) }),
+                )
+            }
+        }
+        rest.upsert("savings_plans", savingsPlans.upserts, onConflict = "user_id,month")
+        rest.deleteIn("savings_plans", "month", savingsPlans.removed)
     }
 
     /**
@@ -179,6 +234,9 @@ private data class Rows(
     val budgetLines: JsonArray,
     val incomePlans: JsonArray,
     val categories: JsonArray,
+    val savingsPots: JsonArray,
+    val savingsEntries: JsonArray,
+    val savingsPlans: JsonArray,
 )
 
 data class RowChanges(val upserts: List<JsonElement>, val removed: List<String>)
@@ -241,6 +299,44 @@ private fun toCategory(row: JsonObject) = CategoryDef(
     // An unrecognised kind is dropped rather than trusted.
     kind = CategoryKind.of(row.text("kind").ifBlank { null }),
 )
+
+private fun toPot(row: JsonObject) = SavingsPot(
+    id = row.text("id"),
+    name = row.text("name"),
+    // A target of zero and no target say the same thing; only one is stored.
+    target = row.number("target").takeIf { it > 0 },
+)
+
+private fun toEntry(row: JsonObject): SavingsEntry {
+    val direction = SavingsDirection.of(row.text("direction"))
+    return SavingsEntry(
+        id = row.text("id"),
+        date = row.text("date"),
+        pot = row.text("pot"),
+        amount = row.number("amount"),
+        direction = direction,
+        // A withdrawal has no source and must not carry one.
+        source = if (direction == SavingsDirection.IN) {
+            SavingsSource.of(row.text("source").ifBlank { null })
+        } else {
+            null
+        },
+        note = row.text("note").ifBlank { null },
+    )
+}
+
+private fun toSavingsPlan(row: JsonObject): SavingsPlan {
+    val stored = (row["amounts"] as? JsonObject).orEmpty()
+    return SavingsPlan(
+        month = row.text("month"),
+        amounts = stored
+            .mapValues { (_, value) -> value.jsonPrimitive.content.toDoubleOrNull() ?: 0.0 }
+            // A figure that will not parse, or one of nothing, is not a plan.
+            .filterValues { it > 0 },
+    )
+}
+
+private fun JsonObject?.orEmpty(): Map<String, JsonElement> = this ?: emptyMap()
 
 /**
  * Rows written before income categories were editable have `salary` and

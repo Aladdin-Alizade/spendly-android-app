@@ -19,6 +19,7 @@ package az.spendly.data
 
 import az.spendly.domain.CategoryDef
 import az.spendly.domain.FinanceData
+import az.spendly.domain.SavingsPot
 import az.spendly.domain.TransactionType
 
 fun mergeFinanceData(base: FinanceData, local: FinanceData, remote: FinanceData) = FinanceData(
@@ -28,7 +29,27 @@ fun mergeFinanceData(base: FinanceData, local: FinanceData, remote: FinanceData)
     categories = dedupeCategories(
         mergeRows(base.categories, local.categories, remote.categories) { it.id },
     ),
+    savingsPots = dedupePots(
+        mergeRows(base.savingsPots, local.savingsPots, remote.savingsPots) { it.id },
+    ),
+    savingsEntries = mergeRows(
+        base.savingsEntries,
+        local.savingsEntries,
+        remote.savingsEntries,
+    ) { it.id },
+    savingsPlans = mergeRows(
+        base.savingsPlans,
+        local.savingsPlans,
+        remote.savingsPlans,
+    ) { it.month },
 )
+
+/** Two ids, one pot — the same collision categories have, for the same reason:
+ *  a pot is unique by name on the server, and every entry names its pot. */
+private fun dedupePots(pots: List<SavingsPot>): List<SavingsPot> {
+    val seen = mutableSetOf<String>()
+    return pots.filter { seen.add(it.name.trim().lowercase()) }
+}
 
 /**
  * Two ids, one category.

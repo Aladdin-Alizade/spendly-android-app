@@ -22,6 +22,16 @@ data class MonthSummary(
     val actualRemainder: Double,
     /** 'BÜDCƏ İCMALI'!D6 — D5 - D4 */
     val difference: Double,
+    /**
+     * What the month means to put away, across every pot. No cell of the sheet
+     * corresponds to it — the sheet had no savings — so it is reported beside
+     * the sheet's figures rather than folded into them: [plannedRemainder]
+     * stays C13 − F11 exactly, and the screen subtracts this from it in the
+     * open, where the reader can see it happen.
+     */
+    val plannedSavings: Double,
+    /** What was actually put away out of income this month. */
+    val actualSavings: Double,
 )
 
 /**
@@ -100,6 +110,8 @@ fun summarise(data: FinanceData, month: MonthKey): MonthSummary {
         plannedRemainder = plannedRemainder,
         actualRemainder = actualRemainder,
         difference = round2(actualRemainder - plannedRemainder),
+        plannedSavings = plannedSavings(data.savingsPlans, month),
+        actualSavings = depositedFromIncome(data.savingsEntries, month),
     )
 }
 
@@ -204,8 +216,30 @@ fun knownMonths(data: FinanceData, extra: MonthKey): List<MonthKey> {
     data.transactions.forEach { months.add(monthOf(it.date)) }
     data.budgetLines.forEach { months.add(it.month) }
     data.incomePlans.forEach { months.add(it.month) }
+    // A month whose only record is a savings movement is still a month with
+    // something in it; leaving it out puts that record somewhere unreachable.
+    data.savingsEntries.forEach { months.add(monthOf(it.date)) }
     return months.sortedDescending()
 }
+
+/**
+ * The money actually available to spend.
+ *
+ * The running balance above is income minus spending, which was the whole
+ * story while savings were recorded as spending. They are not: money moved
+ * into a pot out of income has left this side without being consumed, and a
+ * withdrawal brings it back. Money that arrived from outside straight into a
+ * pot never passed through here at all, which is why it does not appear.
+ */
+fun spendableBalance(data: FinanceData, month: MonthKey? = null): Double = round2(
+    runningBalance(data.transactions, month) + spendableDelta(data.savingsEntries, month),
+)
+
+/** Everything the household holds: what it can spend, plus what it has put
+ *  away. This is the figure the running balance alone used to imply. */
+fun totalHoldings(data: FinanceData, month: MonthKey? = null): Double = round2(
+    spendableBalance(data, month) + savingsBalance(data.savingsEntries, month),
+)
 
 data class TrendPoint(
     val month: MonthKey,

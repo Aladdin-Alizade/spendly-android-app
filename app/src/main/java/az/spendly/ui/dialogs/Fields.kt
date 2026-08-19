@@ -230,3 +230,7 @@ fun ConfirmingDeleteButton(label: String, confirmLabel: String, onDelete: () -> 
         )
     }
 }
+
+/** `12.5` reads better in a field than `12.5000000001`. */
+internal fun trimZeros(value: Double): String =
+    if (value == value.toLong().toDouble()) value.toLong().toString() else value.toString()

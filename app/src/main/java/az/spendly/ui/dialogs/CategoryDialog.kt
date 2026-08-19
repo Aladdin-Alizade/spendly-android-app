@@ -157,6 +157,16 @@ fun CategoryDialog(
                     style = MaterialTheme.typography.bodySmall,
                     color = colors.textFaint,
                 )
+                if (categoryKind == CategoryKind.SAVING) {
+                    Text(
+                        text = "Bu kateqoriya yığım qablarından əvvəl yazılıb. Yığım artıq " +
+                            "ayrıca Yığım səhifəsində aparılır — orada bu xərcləri qab " +
+                            "hərəkətinə çevirmək təklif olunur. Çevirdikdən sonra bu növü " +
+                            "boş buraxa bilərsiniz.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textFaint,
+                    )
+                }
             }
 
             if (inUse) {
@@ -179,8 +189,17 @@ fun CategoryDialog(
  *  state, and the frameworks report it rather than guessing around it. */
 @Composable
 private fun KindPicker(selected: CategoryKind?, onSelect: (CategoryKind?) -> Unit) {
+    /* `saving` is no longer offered — pots do that job — but a category
+       written before them still carries it, and dropping it from the list
+       would show nothing for a category that is in fact classified. */
+    val kinds = if (selected == CategoryKind.SAVING) {
+        CategoryKind.SELECTABLE + CategoryKind.SAVING
+    } else {
+        CategoryKind.SELECTABLE
+    }
+
     val options = listOf<Pair<CategoryKind?, String>>(null to "Təsnif edilməyib") +
-        CategoryKind.ALL.map { it to KIND_LABEL.getValue(it) }
+        kinds.map { it to KIND_LABEL.getValue(it) }
 
     CategoryPicker(
         label = "Növü",

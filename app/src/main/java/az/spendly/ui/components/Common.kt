@@ -27,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -80,11 +81,14 @@ fun Panel(
 
 /** The `.micro` label: small, upper, tracked out. */
 @Composable
-fun Micro(text: String, color: Color? = null) {
+fun Micro(text: String, color: Color? = null, underlined: Boolean = false) {
     Text(
         text = text.uppercase(),
         style = MaterialTheme.typography.labelSmall,
         color = color ?: spendlyColors.textMuted,
+        // A dotted underline is how a label says it can be tapped, without
+        // dressing the whole cell up as a button.
+        textDecoration = if (underlined) TextDecoration.Underline else null,
     )
 }
 
