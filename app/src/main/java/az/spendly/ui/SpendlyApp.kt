@@ -32,6 +32,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,7 +42,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import az.spendly.data.AccountUser
+import az.spendly.data.SyncState
+import az.spendly.data.SyncStatus
 import az.spendly.data.setupHint
 import az.spendly.domain.MonthKey
 import az.spendly.domain.Transaction
@@ -93,6 +99,17 @@ fun SpendlyApp(
     var adding by remember { mutableStateOf(false) }
     var profileOpen by remember { mutableStateOf(false) }
 
+    // Returning to the app is the other moment queued work can go out; the
+    // network callback covers the case where it happens while it is open.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) viewModel.syncNow()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     val months = knownMonths(state.data, currentMonth())
 
     /** New transactions default to today, or to the 1st of a non-current month. */
@@ -108,10 +125,11 @@ fun SpendlyApp(
                     onMonthChange = { month = it },
                     onProfile = { profileOpen = true },
                 )
-                if (state.saveError != null) {
-                    SaveBanner(
-                        message = state.saveError,
-                        onDismiss = viewModel::dismissSaveError,
+                if (!state.syncMessageDismissed) {
+                    SyncBanner(
+                        sync = state.sync,
+                        onRetry = viewModel::syncNow,
+                        onDismiss = viewModel::dismissSyncMessage,
                     )
                 }
             }
@@ -198,6 +216,8 @@ fun SpendlyApp(
         ProfileDialog(
             data = state.data,
             user = user,
+            sync = state.sync,
+            onSync = viewModel::syncNow,
             onSignOut = onSignOut,
             onDismiss = { profileOpen = false },
         )
@@ -352,40 +372,76 @@ private fun Chevron(glyph: String, onClick: () -> Unit) {
  * read as though it were.
  */
 @Composable
-private fun SaveBanner(message: String, onDismiss: () -> Unit) {
+private fun SyncBanner(sync: SyncState, onRetry: () -> Unit, onDismiss: () -> Unit) {
     val colors = spendlyColors
-    val hint = setupHint(message)
-    // The headline already says the write failed. Repeating a generic message
-    // underneath it says it twice and adds nothing.
-    val guidance = hint ?: message.trim().ifBlank { null }
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(colors.negativeSoft)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
+    /*
+     * Three different things, and they must not be said in the same voice.
+     *
+     * Queued work is not a failure — the edit is on the device and will go out
+     * on its own — so it gets a quiet line and no alarm. A rejection from the
+     * server is a failure, needs a person, and says which step fixes it.
+     * Everything in order says nothing at all.
+     */
+    when (sync.status) {
+        SyncStatus.SYNCED -> return
+
+        SyncStatus.OFFLINE, SyncStatus.PENDING -> Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(colors.surfaceSunken)
+                .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "Dəyişiklik yadda saxlanılmadı." +
-                    (guidance?.let { " $it" } ?: "") +
-                    " Tətbiqi bağlasanız, son dəyişiklik itəcək.",
-                style = MaterialTheme.typography.bodySmall,
-                color = colors.text,
-                modifier = Modifier.weight(1f),
-            )
-            TextButton(onClick = onDismiss) { Text("Bağla", color = colors.negative) }
-        }
-        // The raw error, when a hint stood in for it.
-        if (hint != null && message.isNotBlank()) {
-            Text(
-                text = message,
+                text = if (sync.status == SyncStatus.PENDING) {
+                    "Dəyişikliklər cihazda saxlanılıb, sinxronizasiya gözləyir."
+                } else {
+                    "Oflayn rejim — məlumatlar cihazdan oxunur."
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = colors.textMuted,
+                modifier = Modifier.weight(1f),
             )
+            TextButton(onClick = onRetry) { Text("İndi göndər") }
+        }
+
+        SyncStatus.FAILED -> {
+            val message = sync.message.orEmpty()
+            val hint = setupHint(message)
+            // The headline already says the write did not land. Repeating a
+            // generic message underneath it says it twice and adds nothing.
+            val guidance = hint ?: message.trim().ifBlank { null }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(colors.negativeSoft)
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "Server dəyişikliyi qəbul etmədi." +
+                            (guidance?.let { " $it" } ?: "") +
+                            " Dəyişiklik cihazda saxlanılıb.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.text,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = onDismiss) { Text("Bağla", color = colors.negative) }
+                }
+                // The raw error, when a hint stood in for it.
+                if (hint != null && message.isNotBlank()) {
+                    Text(
+                        text = message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textMuted,
+                    )
+                }
+            }
         }
     }
 }

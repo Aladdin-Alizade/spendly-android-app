@@ -14,9 +14,13 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import az.spendly.data.FinanceRepository
 import az.spendly.data.LocalRepository
+import az.spendly.data.NetworkMonitor
 import az.spendly.data.SupabaseConfig
 import az.spendly.data.SupabaseRepository
 import az.spendly.data.SupabaseSession
+import az.spendly.data.SyncState
+import az.spendly.data.SyncStatus
+import az.spendly.data.SyncingRepository
 import az.spendly.data.describeError
 import az.spendly.domain.BudgetLine
 import az.spendly.domain.CategoryDef
@@ -45,20 +49,70 @@ data class FinanceState(
     /** Set when loading failed, so the UI can say what went wrong. */
     val error: String? = null,
     /**
-     * Set when the last write did not reach the backend. An empty string is a
-     * failure with nothing further to say about it; null means the last write
-     * succeeded.
+     * Where this device stands against the server. Local-only mode has nothing
+     * to sync with, so it stays [SyncStatus.SYNCED].
      */
-    val saveError: String? = null,
+    val sync: SyncState = SyncState(),
+    /** The user closed the current sync message; a new one shows again. */
+    val syncMessageDismissed: Boolean = false,
 )
 
-class FinanceViewModel(private val repository: FinanceRepository) : ViewModel() {
+class FinanceViewModel(
+    private val repository: FinanceRepository,
+    /** Absent in local-only mode, where there is nothing to reach. */
+    private val network: NetworkMonitor? = null,
+) : ViewModel() {
 
     private val _state = MutableStateFlow(FinanceState())
     val state: StateFlow<FinanceState> = _state.asStateFlow()
 
+    private val syncing = repository as? SyncingRepository
+
     init {
         load()
+        observeSync()
+        observeNetwork()
+    }
+
+    /** The repository reports where it stands; the UI reads it from here. */
+    private fun observeSync() {
+        val source = syncing ?: return
+        viewModelScope.launch {
+            source.state.collect { sync ->
+                _state.value = _state.value.copy(sync = sync, syncMessageDismissed = false)
+            }
+        }
+    }
+
+    /**
+     * A network appearing is the moment queued work can go out. Nothing else
+     * triggers a retry, because retrying on a timer would keep failing at
+     * exactly the same rate as the thing that is not there.
+     */
+    private fun observeNetwork() {
+        val monitor = network ?: return
+        val source = syncing ?: return
+        viewModelScope.launch {
+            var first = true
+            monitor.online.collect { online ->
+                if (first) {
+                    first = false
+                    return@collect
+                }
+                if (!online) return@collect
+                val merged = runCatching { source.sync() }.getOrNull()
+                if (merged != null) _state.value = _state.value.copy(data = merged)
+            }
+        }
+    }
+
+    /** Send whatever is queued, now. */
+    fun syncNow() {
+        val source = syncing ?: return
+        viewModelScope.launch {
+            val merged = runCatching { source.sync() }.getOrNull()
+            if (merged != null) _state.value = _state.value.copy(data = merged)
+        }
     }
 
     fun retry() = load()
@@ -84,8 +138,8 @@ class FinanceViewModel(private val repository: FinanceRepository) : ViewModel() 
         }
     }
 
-    fun dismissSaveError() {
-        _state.value = _state.value.copy(saveError = null)
+    fun dismissSyncMessage() {
+        _state.value = _state.value.copy(syncMessageDismissed = true)
     }
 
     private fun commit(update: (FinanceData) -> FinanceData) {
@@ -94,12 +148,13 @@ class FinanceViewModel(private val repository: FinanceRepository) : ViewModel() 
         viewModelScope.launch {
             try {
                 repository.save(next)
-                _state.value = _state.value.copy(saveError = null)
             } catch (cause: Exception) {
-                // An empty description still means the write failed, so it is
-                // kept as a marker: the banner then says that much and nothing
-                // it cannot back up.
-                _state.value = _state.value.copy(saveError = describeError(cause))
+                // The syncing repository reports through its own state; this
+                // catches the local-only path, where a failure to write the
+                // device's own file is the whole story.
+                _state.value = _state.value.copy(
+                    sync = SyncState(SyncStatus.FAILED, describeError(cause)),
+                )
             }
         }
     }
@@ -243,14 +298,19 @@ class FinanceViewModel(private val repository: FinanceRepository) : ViewModel() 
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                    val repository: FinanceRepository = if (SupabaseConfig.isConfigured) {
-                        // The session reads the tokens the sign-in screen
-                        // stored, so this is the same account either way.
-                        SupabaseRepository(SupabaseSession(application))
-                    } else {
-                        LocalRepository(application)
+                    if (!SupabaseConfig.isConfigured) {
+                        return FinanceViewModel(LocalRepository(application)) as T
                     }
-                    return FinanceViewModel(repository) as T
+
+                    // The session reads the tokens the sign-in screen stored,
+                    // so this is the same account either way. The device's own
+                    // snapshot is still the working copy — the account decides
+                    // where the data belongs, not whether it is saved.
+                    val remote = SupabaseRepository(SupabaseSession(application))
+                    return FinanceViewModel(
+                        repository = SyncingRepository(application, remote),
+                        network = NetworkMonitor(application),
+                    ) as T
                 }
             }
     }

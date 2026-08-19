@@ -93,9 +93,8 @@ what makes it installable, not an optional polish step.
 ./gradlew test
 ```
 
-162 unit tests over the calculation, analytics, advice, category and validation
-rules — the web app's suite, carried across. They need no device and no
-emulator.
+173 unit tests over the calculation, analytics, advice, category, validation
+and merge rules. They need no device and no emulator.
 
 ---
 
@@ -198,9 +197,12 @@ should move to first.
 
 ## Where your data lives
 
-**By default, on the device.** One JSON file in the app's own storage. No
-account, no server, nothing leaves the phone — and nothing to sign into, so no
-sign-in screen ever appears.
+**Always on the device.** One JSON file in the app's own storage. Every change
+is written there first, before anything is asked of the network — so an edit
+made with no signal is saved, not held in memory and lost when the app closes.
+
+With no Supabase project configured that file is the whole story: no account,
+no server, nothing leaves the phone, and no sign-in screen ever appears.
 
 **Optionally, in your own Supabase project**, which gets you a real database, a
 backup, and the same data on your phone and in the web app. Put the project
@@ -221,6 +223,25 @@ Then, in the Supabase dashboard:
 With a project configured, the app opens on a sign-in screen. Your data belongs
 to that account, so the same figures are there from any device that signs in.
 It is the same account the web app uses.
+
+**Being offline is a normal state, not a failure.** The device's file stays the
+working copy; the account is where it is shared from. When the server cannot be
+reached, the app says *"dəyişikliklər cihazda saxlanılıb, sinxronizasiya
+gözləyir"* and keeps working. The queue goes out on its own the moment a
+network appears, when you return to the app, or when you tap **İndi göndər**.
+
+Bringing the two together follows one rule: **rows this device changed while it
+could not reach the server win; every other row comes from the server.** So
+work done on the phone is never silently replaced by what the browser had, and
+anything entered elsewhere in the meantime still arrives. Two devices editing
+the very same transaction while both offline is the case it cannot resolve —
+the one that syncs second wins, and nothing is lost that was not deliberately
+replaced.
+
+A rejection from the server is a different thing from being offline, and is
+said differently: the red banner means the server answered and refused, and it
+names the setup step that fixes it. Your change is still on the device either
+way.
 
 The profile — the round button at the top right — shows who is signed in, when
 the account was created, what it holds, and the way out. It also shows the user
@@ -258,4 +279,7 @@ those figures had to keep matching.
 `data/FinanceRepository` is the only way anything is stored or read.
 `LocalRepository` writes one JSON snapshot to app storage; `SupabaseRepository`
 diffs the snapshot against what it last wrote and sends only the rows that
-changed. Nothing above that interface knows which one it got.
+changed; `SyncingRepository` puts the two together — device first, server
+after, with a second snapshot recording what the server last acknowledged so
+this device's unsent work can be told apart from rows it simply has not seen.
+Nothing above that interface knows which one it got.

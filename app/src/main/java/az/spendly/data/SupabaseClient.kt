@@ -32,7 +32,17 @@ import okhttp3.Response
 
 /** Raised with a message the setup hints can read, so a fresh project's
  *  failures name the step that fixes them. */
-class SupabaseException(message: String) : IOException(message)
+open class SupabaseException(message: String) : IOException(message)
+
+/**
+ * The request never reached the server.
+ *
+ * Kept apart from every other failure because the two mean opposite things: a
+ * rejection is the server telling us no, and this is the server not being
+ * heard from. Treating one as the other is how being on a train signs somebody
+ * out of their account, or how a real rejection gets retried forever.
+ */
+class SupabaseOfflineException(message: String) : SupabaseException(message)
 
 /** What the app shows about the person signed in. Nothing else is read. */
 data class AccountUser(
@@ -120,6 +130,11 @@ class SupabaseSession(context: Context) {
                     buildJsonObject { put("refresh_token", refresh) },
                 ),
             )
+        } catch (offline: SupabaseOfflineException) {
+            // Unreachable is not rejected. Signing somebody out because their
+            // train went into a tunnel would lose the session — and with it
+            // the only identity their rows are scoped to.
+            throw offline
         } catch (cause: SupabaseException) {
             // A refresh token the server no longer accepts means the session
             // is over; keeping it would retry the same failure forever.
@@ -229,13 +244,7 @@ class SupabaseSession(context: Context) {
             .getOrElse { throw SupabaseException("Supabase cavabı oxunmadı") }
     }
 
-    private fun execute(request: Request): String {
-        http.newCall(request).execute().use { response ->
-            val text = response.body?.string().orEmpty()
-            if (!response.isSuccessful) throw SupabaseException(describeHttpFailure(response, text))
-            return text
-        }
-    }
+    private fun execute(request: Request): String = call(http, request)
 
     private companion object {
         const val KEY_ACCESS = "access_token"
@@ -300,16 +309,29 @@ class SupabaseRest(private val session: SupabaseSession) {
         .addHeader("Authorization", "Bearer ${session.token()}")
         .addHeader("Content-Type", "application/json")
 
-    private fun execute(request: Request): String {
-        http.newCall(request).execute().use { response ->
-            val text = response.body?.string().orEmpty()
-            if (!response.isSuccessful) throw SupabaseException(describeHttpFailure(response, text))
-            return text
-        }
-    }
+    private fun execute(request: Request): String = call(http, request)
 
     private fun encode(value: String): String =
         java.net.URLEncoder.encode(value, "UTF-8").replace("+", "%20")
+}
+
+/**
+ * One HTTP call, with the two kinds of failure kept apart.
+ */
+private fun call(http: OkHttpClient, request: Request): String {
+    val response = try {
+        http.newCall(request).execute()
+    } catch (cause: IOException) {
+        throw SupabaseOfflineException(
+            cause.message ?: "Serverə çıxış yoxdur",
+        )
+    }
+
+    response.use {
+        val text = it.body?.string().orEmpty()
+        if (!it.isSuccessful) throw SupabaseException(describeHttpFailure(it, text))
+        return text
+    }
 }
 
 /**

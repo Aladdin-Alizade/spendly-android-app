@@ -4,6 +4,9 @@
     <!-- Only needed when a Supabase project is configured; without it the app
          never touches the network. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Read-only: the moment a network appears is the moment worth retrying
+         whatever could not be sent. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <application
         android:allowBackup="true"

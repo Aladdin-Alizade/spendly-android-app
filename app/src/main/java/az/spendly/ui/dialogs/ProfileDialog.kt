@@ -30,6 +30,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import az.spendly.data.AccountUser
+import az.spendly.data.SyncState
+import az.spendly.data.SyncStatus
 import az.spendly.domain.FinanceData
 import az.spendly.domain.TransactionType
 import az.spendly.domain.categoriesOfType
@@ -54,6 +56,8 @@ fun ProfileDialog(
     data: FinanceData,
     /** Null in local-storage mode, where there is nobody signed in. */
     user: AccountUser?,
+    sync: SyncState,
+    onSync: () -> Unit,
     onSignOut: (() -> Unit)?,
     onDismiss: () -> Unit,
 ) {
@@ -151,6 +155,41 @@ fun ProfileDialog(
                 style = MaterialTheme.typography.bodyMedium,
                 color = colors.textMuted,
             )
+        }
+
+        if (user != null) {
+            // Where this device stands against the account, and the way to
+            // push whatever is waiting without leaving the screen.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(Radius.sm))
+                    .background(colors.surfaceInset)
+                    .padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Micro("Sinxronizasiya")
+                    Text(
+                        text = when (sync.status) {
+                            SyncStatus.SYNCED -> "Hər şey hesabda saxlanılıb"
+                            SyncStatus.PENDING -> "Cihazda gözləyən dəyişiklik var"
+                            SyncStatus.OFFLINE -> "Oflayn — serverə çıxış yoxdur"
+                            SyncStatus.FAILED -> sync.message?.takeIf { it.isNotBlank() }
+                                ?: "Server dəyişikliyi qəbul etmədi"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = when (sync.status) {
+                            SyncStatus.SYNCED -> colors.positive
+                            SyncStatus.FAILED -> colors.negative
+                            else -> colors.textMuted
+                        },
+                    )
+                }
+                if (sync.status != SyncStatus.SYNCED) {
+                    TextButton(onClick = onSync) { Text("İndi göndər") }
+                }
+            }
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
