@@ -17,7 +17,7 @@ import az.spendly.domain.FinanceData
 import az.spendly.domain.IncomePlan
 import az.spendly.domain.Transaction
 import az.spendly.domain.TransactionType
-import az.spendly.domain.defaultCategories
+import az.spendly.domain.categoriesFromData
 import az.spendly.domain.emptyData
 import az.spendly.domain.migrateCategory
 import az.spendly.domain.migrateIncomePlan
@@ -36,6 +36,18 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+
+/**
+ * Ids are minted on the device, so they are only unique to one person. They
+ * were not even that once: accounts made while the app handed out a starting
+ * set of categories and a plan template all carry the same ids for those rows,
+ * and those accounts still exist. The tables are keyed on (user_id, id) for
+ * that reason, and every upsert says so, so a write is only ever matched
+ * against a row this account owns. Matched against somebody else's, it fails
+ * as a row level security violation — the row it collided with is one the
+ * policies hide — and no edit gets saved.
+ */
+private const val BY_OWNER = "user_id,id"
 
 class SupabaseRepository(private val session: SupabaseSession) : FinanceRepository {
     private val rest = SupabaseRest(session)
@@ -57,16 +69,21 @@ class SupabaseRepository(private val session: SupabaseSession) : FinanceReposito
             Rows(a.await(), b.await(), c.await(), d.await())
         }
 
-        val stored = categories.map { toCategory(it.jsonObject) }
-
-        val data = FinanceData(
+        val loaded = FinanceData(
             transactions = transactions.map { toTransaction(it.jsonObject) },
             budgetLines = budgetLines.map { toBudgetLine(it.jsonObject) },
             incomePlans = incomePlans.map { toIncomePlan(it.jsonObject) },
-            // An account created before categories were stored has none; it gets
-            // the starting set, which the next save then persists.
-            categories = stored.ifEmpty { defaultCategories() },
+            categories = categories.map { toCategory(it.jsonObject) },
         )
+
+        // An account created before categories were stored has none of its own.
+        // Its rows name the categories it used, so those come back and the next
+        // save persists them. A new account has no rows either, and stays empty.
+        val data = if (loaded.categories.isNotEmpty()) {
+            loaded
+        } else {
+            loaded.copy(categories = categoriesFromData(loaded))
+        }
 
         previous = data
         data
@@ -102,7 +119,7 @@ class SupabaseRepository(private val session: SupabaseSession) : FinanceReposito
                 if (it.note == null) put("note", JsonNull) else put("note", it.note)
             }
         }
-        rest.upsert("transactions", transactions.upserts)
+        rest.upsert("transactions", transactions.upserts, onConflict = BY_OWNER)
         rest.deleteIn("transactions", "id", transactions.removed)
 
         // --- budget lines ----------------------------------------------------
@@ -116,7 +133,7 @@ class SupabaseRepository(private val session: SupabaseSession) : FinanceReposito
                 put("planned", it.planned)
             }
         }
-        rest.upsert("budget_lines", lines.upserts)
+        rest.upsert("budget_lines", lines.upserts, onConflict = BY_OWNER)
         rest.deleteIn("budget_lines", "id", lines.removed)
 
         // --- categories -------------------------------------------------------
@@ -130,7 +147,7 @@ class SupabaseRepository(private val session: SupabaseSession) : FinanceReposito
                 if (kind == null) put("kind", JsonNull) else put("kind", kind.wire)
             }
         }
-        rest.upsert("categories", categories.upserts)
+        rest.upsert("categories", categories.upserts, onConflict = BY_OWNER)
         rest.deleteIn("categories", "id", categories.removed)
 
         // --- income plans (keyed by month, not by a generated id) -------------

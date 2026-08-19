@@ -8,7 +8,6 @@ import az.spendly.domain.FinanceData
 import az.spendly.domain.TransactionInput
 import az.spendly.domain.TransactionType
 import az.spendly.domain.categoryNames
-import az.spendly.domain.defaultCategories
 import az.spendly.domain.validateTransaction
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -16,7 +15,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-private val data = FinanceData(categories = defaultCategories())
+private val data = FinanceData(categories = sheetCategories())
 private val EXPENSES = categoryNames(data, TransactionType.EXPENSE)
 private val INCOMES = categoryNames(data, TransactionType.INCOME)
 

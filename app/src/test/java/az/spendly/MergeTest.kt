@@ -15,7 +15,6 @@ import az.spendly.domain.FinanceData
 import az.spendly.domain.IncomePlan
 import az.spendly.domain.Transaction
 import az.spendly.domain.TransactionType
-import az.spendly.domain.defaultCategories
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -112,7 +111,7 @@ class MergeFinanceDataTest {
         transactions = listOf(t("a")),
         budgetLines = listOf(BudgetLine("b1", "2026-08", "Ev", "Əlavə xərclər", 230.0)),
         incomePlans = listOf(IncomePlan("2026-08", mapOf("Maaş" to 990.0))),
-        categories = defaultCategories(),
+        categories = sheetCategories(),
     )
 
     @Test

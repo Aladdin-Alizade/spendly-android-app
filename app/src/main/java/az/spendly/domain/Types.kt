@@ -40,36 +40,6 @@ enum class TransactionType {
 }
 
 /**
- * The expense categories an account starts with — one for each entry of the
- * data-validation list on 'Aylıq rasxod'!C3:C25, translated into Azerbaijani.
- *
- * These are a starting set, not the set. Categories are data: they live in
- * [FinanceData.categories] and can be added to, renamed and removed. This list
- * is only what a new account is seeded with.
- */
-val EXPENSE_CATEGORIES = listOf(
-    "Kreditlər",
-    "Ərzaq",
-    "Nəqliyyat",
-    "Şəxsi gigiyena",
-    "Telefon və internet",
-    "Təhsil",
-    "İdman",
-    "Əyləncə",
-    "Hədiyyə və xeyriyyə",
-    "Əlavə xərclər",
-    "Avtomobil kartı",
-)
-
-/**
- * The income categories an account starts with. The sheet modelled income as
- * exactly two rows ('BÜDCƏ İCMALI'!B11 and B12), and the planned side of
- * income still has exactly those two fields — so these two are seeded, and
- * anything added beyond them is reported with no planned amount.
- */
-val INCOME_CATEGORIES = listOf("Maaş", "Əlavə gəlir")
-
-/**
  * What a category is *for*, which is what the needs/wants frameworks measure.
  *
  * Deliberately optional. Nothing guesses it: an unclassified category stays
@@ -113,6 +83,10 @@ enum class CategoryKind {
  * every stored row already does. The id exists so a rename is an edit to one
  * record rather than a new category, and so the name can change without the
  * history losing track of which category it was.
+ *
+ * A new account holds none of these. Categories are the shape somebody gives
+ * their own money, so the app hands out no starting set and no example plan —
+ * the list is empty until its owner writes it.
  */
 @Serializable
 data class CategoryDef(
@@ -122,15 +96,6 @@ data class CategoryDef(
     /** Unset means unclassified, and the analyses say so. */
     val kind: CategoryKind? = null,
 )
-
-/** The categories a new account starts with. Ids are stable, so seeding the
- *  same account twice cannot produce duplicates. */
-fun defaultCategories(): List<CategoryDef> =
-    EXPENSE_CATEGORIES.mapIndexed { index, name ->
-        CategoryDef("cat-expense-$index", name, TransactionType.EXPENSE)
-    } + INCOME_CATEGORIES.mapIndexed { index, name ->
-        CategoryDef("cat-income-$index", name, TransactionType.INCOME)
-    }
 
 /**
  * Categories were stored in Russian before the app was translated. Data saved
@@ -214,8 +179,8 @@ val emptyData = FinanceData()
  * Read an income plan saved in either shape.
  *
  * Rows written before income categories were editable carry `salary` and
- * `additional`; those two figures belong to the two categories an account is
- * seeded with, so that is where they are put.
+ * `additional`; those two figures belong to the two categories that shape
+ * stood for, so that is where they are put.
  */
 fun migrateIncomePlan(
     month: MonthKey,
@@ -232,9 +197,16 @@ fun migrateIncomePlan(
         )
     }
 
+    // The two names the old two-field shape stood for. They are written out
+    // here because nothing hands them out any more: an account keeps only the
+    // income categories its owner made, and these are what the legacy figures
+    // were always called.
+    val salaryName = "Maaş"
+    val additionalName = "Əlavə gəlir"
+
     val migrated = buildMap {
-        if (salary > 0) put(INCOME_CATEGORIES[0], salary)
-        if (additional > 0) put(INCOME_CATEGORIES[1], additional)
+        if (salary > 0) put(salaryName, salary)
+        if (additional > 0) put(additionalName, additional)
     }
     return IncomePlan(month, migrated)
 }
@@ -249,9 +221,14 @@ fun normaliseData(data: FinanceData): FinanceData = FinanceData(
     incomePlans = data.incomePlans.map { migrateIncomePlan(it.month, it.amounts) },
     // A snapshot saved before categories were editable has none stored, so it
     // is given the starting set rather than an app with no categories at all.
-    categories = if (data.categories.isNotEmpty()) {
-        data.categories.map { it.copy(name = migrateCategory(it.name)) }
+    categories = data.categories.map { it.copy(name = migrateCategory(it.name)) },
+).let { normalised ->
+    // A snapshot saved before categories were records of their own has none
+    // stored. Its own rows say which ones it used, and that is what it gets
+    // back — an empty snapshot stays empty, which is what a new account is.
+    if (normalised.categories.isNotEmpty()) {
+        normalised
     } else {
-        defaultCategories()
-    },
-)
+        normalised.copy(categories = categoriesFromData(normalised))
+    }
+}

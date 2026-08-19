@@ -9,7 +9,6 @@ import az.spendly.domain.FinanceData
 import az.spendly.domain.IncomePlan
 import az.spendly.domain.Transaction
 import az.spendly.domain.TransactionType
-import az.spendly.domain.defaultCategories
 import az.spendly.domain.insights.Advice
 import az.spendly.domain.insights.AdvicePriority
 import az.spendly.domain.insights.AdviceReport
@@ -53,7 +52,7 @@ private fun financeData(
     transactions: List<Transaction> = emptyList(),
     budgetLines: List<BudgetLine> = emptyList(),
     incomePlans: List<IncomePlan> = emptyList(),
-) = FinanceData(transactions, budgetLines, incomePlans, defaultCategories())
+) = FinanceData(transactions, budgetLines, incomePlans, sheetCategories())
 
 private fun AdviceReport.all(): List<Advice> = attention + good + review
 private fun AdviceReport.ids(): List<String> = all().map { it.id }

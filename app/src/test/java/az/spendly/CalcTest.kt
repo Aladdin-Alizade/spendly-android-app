@@ -13,9 +13,7 @@ import az.spendly.domain.Transaction
 import az.spendly.domain.TransactionType
 import az.spendly.domain.actualExpenses
 import az.spendly.domain.budgetGroups
-import az.spendly.domain.budgetTemplate
 import az.spendly.domain.categoryTotals
-import az.spendly.domain.defaultCategories
 import az.spendly.domain.formatAZN
 import az.spendly.domain.formatSignedAZN
 import az.spendly.domain.isValidDate
@@ -65,13 +63,13 @@ internal fun build(
     transactions: List<Transaction> = emptyList(),
     budgetLines: List<BudgetLine> = emptyList(),
     incomePlans: List<IncomePlan> = emptyList(),
-) = FinanceData(transactions, budgetLines, incomePlans, defaultCategories())
+) = FinanceData(transactions, budgetLines, incomePlans, sheetCategories())
 
 class SpreadsheetFidelityTest {
 
     @Test
     fun `reproduces F11 - planned expenses total 1,142 AZN`() {
-        val data = build(budgetLines = budgetTemplate(M))
+        val data = build(budgetLines = sheetPlan(M))
         assertEquals(1142.0, plannedExpenses(data.budgetLines, M), 0.0)
     }
 
@@ -79,7 +77,7 @@ class SpreadsheetFidelityTest {
     fun `reproduces the full summary block with no actuals recorded`() {
         // C11 = 990, C12 = 0, column E empty — exactly the state of the sheet.
         val data = build(
-            budgetLines = budgetTemplate(M),
+            budgetLines = sheetPlan(M),
             incomePlans = listOf(IncomePlan(M, mapOf("Maaş" to 990.0))),
         )
         val summary = summarise(data, M)
@@ -102,7 +100,7 @@ class SpreadsheetFidelityTest {
                 tx(amount = 100.55),
             ),
             incomePlans = listOf(IncomePlan(M, mapOf("Maaş" to 990.0))),
-            budgetLines = budgetTemplate(M),
+            budgetLines = sheetPlan(M),
         )
         val summary = summarise(data, M)
         assertEquals(990.0, summary.actualIncome, 0.0)
@@ -125,7 +123,7 @@ class SpreadsheetFidelityTest {
     @Test
     fun `reproduces the SUMIF rollup per category`() {
         val data = build(
-            budgetLines = budgetTemplate(M),
+            budgetLines = sheetPlan(M),
             transactions = listOf(
                 tx(category = "Kreditlər", amount = 220.0),
                 tx(category = "Kreditlər", amount = 35.0),
@@ -145,7 +143,7 @@ class SpreadsheetFidelityTest {
     @Test
     fun `reports actual spend per category, never invented per line`() {
         val data = build(
-            budgetLines = budgetTemplate(M),
+            budgetLines = sheetPlan(M),
             transactions = listOf(tx(category = "Kreditlər", amount = 100.0)),
         )
         val groups = budgetGroups(data, M)

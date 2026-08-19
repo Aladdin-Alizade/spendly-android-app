@@ -16,7 +16,6 @@ import az.spendly.domain.UnexpectedReason
 import az.spendly.domain.categoryBreakdown
 import az.spendly.domain.comparisonLabel
 import az.spendly.domain.dailyActivity
-import az.spendly.domain.defaultCategories
 import az.spendly.domain.expectedSplit
 import az.spendly.domain.flowBuckets
 import az.spendly.domain.formatMonthShort
@@ -58,7 +57,7 @@ private fun data(
     transactions: List<Transaction> = emptyList(),
     budgetLines: List<BudgetLine> = emptyList(),
     incomePlans: List<IncomePlan> = emptyList(),
-) = FinanceData(transactions, budgetLines, incomePlans, defaultCategories())
+) = FinanceData(transactions, budgetLines, incomePlans, sheetCategories())
 
 class PeriodTest {
 

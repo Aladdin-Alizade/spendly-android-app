@@ -2,7 +2,7 @@ package az.spendly.data
 
 import android.content.Context
 import az.spendly.domain.FinanceData
-import az.spendly.domain.seedData
+import az.spendly.domain.emptyData
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -19,7 +19,9 @@ class LocalRepository(context: Context) : FinanceRepository {
     private val writeLock = Mutex()
 
     override suspend fun load(): FinanceData = withContext(Dispatchers.IO) {
-        store.read() ?: seedData().also { store.write(it) }
+        // Nothing stored means nothing to show. A first run gets an empty
+        // account, not a stranger's categories and plan.
+        store.read() ?: emptyData
     }
 
     override suspend fun save(data: FinanceData) = withContext(Dispatchers.IO) {

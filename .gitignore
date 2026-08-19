@@ -6,6 +6,7 @@ captures/
 
 # Gradle
 .gradle/
+.kotlin/
 
 # Machine-specific setup: the SDK path and the Supabase project.
 local.properties

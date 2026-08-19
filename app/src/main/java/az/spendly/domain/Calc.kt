@@ -176,8 +176,9 @@ fun categoryTotals(data: FinanceData, month: MonthKey): List<CategoryTotal> {
     val lines = budgetLinesInMonth(data.budgetLines, month)
     val totalActual = actualExpenses(data.transactions, month)
 
-    // Include every known category plus any legacy category still present in data.
-    val known = LinkedHashSet<String>(EXPENSE_CATEGORIES)
+    // Every category the month actually names, whether or not it is still in
+    // the user's list — a category removed after the fact keeps its history.
+    val known = LinkedHashSet<String>()
     spendByCategory.keys.forEach { known.add(it) }
     lines.forEach { known.add(it.category) }
 

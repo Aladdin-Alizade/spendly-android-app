@@ -165,6 +165,19 @@ fun TransactionDialog(
             onSelect = { input = input.copy(category = it) },
         )
 
+        /* An account starts with no categories at all, so an empty list is a
+           normal first step rather than a mistake. Saying where they are made
+           beats a picker with nothing in it. */
+        if (options.isEmpty()) {
+            Text(
+                text = (if (input.type == TransactionType.INCOME) "Gəlir" else "Xərc") +
+                    " kateqoriyası hələ yoxdur. Büdcə səhifəsində Kateqoriyalar " +
+                    "bölməsindən əlavə edin.",
+                style = MaterialTheme.typography.bodySmall,
+                color = spendlyColors.textMuted,
+            )
+        }
+
         DateField(
             label = "Tarix",
             value = input.date,

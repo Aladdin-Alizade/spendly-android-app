@@ -16,7 +16,7 @@
 -- ---------------------------------------------------------------------------
 
 create table if not exists public.transactions (
-  id          text primary key,
+  id          text not null,
   user_id     uuid not null default auth.uid()
                 references auth.users (id) on delete cascade,
   date        date not null,
@@ -26,11 +26,16 @@ create table if not exists public.transactions (
   -- Amounts are always stored positive; direction comes from `type`.
   amount      numeric(14, 2) not null check (amount > 0),
   note        text,
-  created_at  timestamptz not null default now()
+  created_at  timestamptz not null default now(),
+  -- Ids are minted in the browser and are only ever unique to one person.
+  -- Accounts made while the app handed out a starting set of categories and a
+  -- plan template all carry the same ids for those rows. So the owner is part
+  -- of the key — two people holding the same id is normal, not a conflict.
+  primary key (user_id, id)
 );
 
 create table if not exists public.budget_lines (
-  id          text primary key,
+  id          text not null,
   user_id     uuid not null default auth.uid()
                 references auth.users (id) on delete cascade,
   -- 'YYYY-MM'. One spreadsheet file was one month.
@@ -39,14 +44,16 @@ create table if not exists public.budget_lines (
   category    text not null,
   -- Zero is valid: the sheet has tracked-but-unbudgeted lines.
   planned     numeric(14, 2) not null default 0 check (planned >= 0),
-  created_at  timestamptz not null default now()
+  created_at  timestamptz not null default now(),
+  -- Keyed by owner as well, for the reason given on `transactions`.
+  primary key (user_id, id)
 );
 
 -- Categories are user data: the app seeds a starting set and the user adds to,
 -- renames and removes them. Rows elsewhere reference a category by name, the
 -- way the spreadsheet did — the id is here so a rename stays one record.
 create table if not exists public.categories (
-  id         text primary key,
+  id         text not null,
   user_id    uuid not null default auth.uid()
                references auth.users (id) on delete cascade,
   name       text not null check (length(btrim(name)) > 0),
@@ -56,6 +63,8 @@ create table if not exists public.categories (
   kind       text check (kind is null or kind in
                ('essential', 'discretionary', 'debt', 'saving')),
   created_at timestamptz not null default now(),
+  -- Keyed by owner as well, for the reason given on `transactions`.
+  primary key (user_id, id),
   -- One name per side of the ledger. An expense and an income category may
   -- share a name, because nothing looks a category up without its type.
   unique (user_id, type, name)
@@ -75,6 +84,43 @@ create table if not exists public.income_plans (
   additional numeric(14, 2) not null default 0 check (additional >= 0),
   primary key (user_id, month)
 );
+
+-- Brings a project keyed on the id alone up to date.
+--
+-- A bare `id` primary key is global, but ids are not: accounts made while the
+-- app seeded a starting set all carry the same ids. The second person to sign up
+-- collided with the first one's rows — and because row level security hides
+-- those rows, the collision surfaced as "new row violates row-level security
+-- policy (USING expression)" rather than as a duplicate key. Widening the key
+-- to (user_id, id) gives each account its own id space.
+do $$
+declare
+  t       text;
+  pk_name text;
+  pk_cols text[];
+begin
+  foreach t in array array['transactions', 'budget_lines', 'categories']
+  loop
+    -- The column names of the current primary key, sorted so the comparison
+    -- below does not depend on the order they were declared in.
+    select c.conname,
+           (select array_agg(a.attname::text order by a.attname)
+              from pg_attribute a
+             where a.attrelid = c.conrelid
+               and a.attnum = any (c.conkey))
+      into pk_name, pk_cols
+      from pg_constraint c
+     where c.conrelid = format('public.%I', t)::regclass
+       and c.contype = 'p';
+
+    if pk_cols is distinct from array['id', 'user_id']::text[] then
+      if pk_name is not null then
+        execute format('alter table public.%I drop constraint %I', t, pk_name);
+      end if;
+      execute format('alter table public.%I add primary key (user_id, id)', t);
+    end if;
+  end loop;
+end $$;
 
 -- Brings a project created before income categories were editable up to date.
 alter table public.income_plans

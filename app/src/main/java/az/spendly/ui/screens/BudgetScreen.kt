@@ -76,6 +76,9 @@ fun BudgetScreen(
     var editingCategory by remember { mutableStateOf<Pair<CategoryDef?, TransactionType>?>(null) }
 
     val groups = budgetGroups(data, month)
+    // Carrying the plan over needs a plan to carry. With no earlier month
+    // there is nothing to copy, so the offer is not made.
+    val hasPriorPlan = data.budgetLines.any { it.month < month }
     val summary = summarise(data, month)
     val plan = data.incomePlans.firstOrNull { it.month == month }
     val incomeCategories = categoriesOfType(data, TransactionType.INCOME)
@@ -138,14 +141,24 @@ fun BudgetScreen(
                     RowCard {
                         EmptyState(
                             title = "${formatMonth(month)} üçün plan yoxdur",
-                            body = "Keçən ayın planını köçürün və ya sıfırdan başlayın.",
+                            body = if (hasPriorPlan) {
+                                "Keçən ayın planını köçürün və ya sıfırdan başlayın."
+                            } else {
+                                "Planlaşdırdığınız xərcləri sətir-sətir əlavə edin."
+                            },
                             action = {
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Button(onClick = { onApplyTemplate(month) }) {
-                                        Text("Planı köçür")
-                                    }
-                                    OutlinedButton(onClick = { addingLine = true }) {
-                                        Text("Sətir əlavə et")
+                                    if (hasPriorPlan) {
+                                        Button(onClick = { onApplyTemplate(month) }) {
+                                            Text("Planı köçür")
+                                        }
+                                        OutlinedButton(onClick = { addingLine = true }) {
+                                            Text("Sətir əlavə et")
+                                        }
+                                    } else {
+                                        Button(onClick = { addingLine = true }) {
+                                            Text("Sətir əlavə et")
+                                        }
                                     }
                                 }
                             },
@@ -292,20 +305,6 @@ fun BudgetScreen(
             }
         }
 
-        /* --- deletion ---------------------------------------------------- */
-        val hasPlan = groups.any { it.lines.isNotEmpty() }
-        if (hasPlan || data.transactions.isNotEmpty()) {
-            item {
-                DangerZone(
-                    month = month,
-                    hasPlan = hasPlan,
-                    transactionCount = data.transactions.size,
-                    onClearPlan = { onClearMonthPlan(month) },
-                    onResetAll = onResetAll,
-                )
-            }
-        }
-
         /* --- categories --------------------------------------------------- */
         item {
             Column {
@@ -333,6 +332,20 @@ fun BudgetScreen(
                         onAdd = { editingCategory = null to TransactionType.INCOME },
                     )
                 }
+            }
+        }
+
+        /* --- deletion ---------------------------------------------------- */
+        val hasPlan = groups.any { it.lines.isNotEmpty() }
+        if (hasPlan || data.transactions.isNotEmpty()) {
+            item {
+                DangerZone(
+                    month = month,
+                    hasPlan = hasPlan,
+                    transactionCount = data.transactions.size,
+                    onClearPlan = { onClearMonthPlan(month) },
+                    onResetAll = onResetAll,
+                )
             }
         }
     }

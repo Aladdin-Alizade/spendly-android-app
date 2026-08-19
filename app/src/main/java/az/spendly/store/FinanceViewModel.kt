@@ -31,7 +31,6 @@ import az.spendly.domain.MonthKey
 import az.spendly.domain.Transaction
 import az.spendly.domain.TransactionType
 import az.spendly.domain.addCategory as addCategoryTo
-import az.spendly.domain.budgetTemplate
 import az.spendly.domain.emptyData
 import az.spendly.domain.removeCategory as removeCategoryFrom
 import az.spendly.domain.renameCategory as renameCategoryIn
@@ -234,22 +233,20 @@ class FinanceViewModel(
     fun applyTemplate(month: MonthKey) = commit { previous ->
         if (previous.budgetLines.any { it.month == month }) return@commit previous
 
-        // Carry forward the most recent month's plan, or the sheet's original.
+        // Carry the most recent month's plan forward. There is nothing else to
+        // carry: an account holds only the plan its owner wrote, so with no
+        // earlier month this does nothing rather than inventing one.
         val source = previous.budgetLines
             .map { it.month }
             .distinct()
             .filter { it < month }
-            .maxOrNull()
+            .maxOrNull() ?: return@commit previous
 
-        val lines = if (source != null) {
-            previous.budgetLines
-                .filter { it.month == source }
-                .map { it.copy(id = nextId(), month = month) }
-        } else {
-            budgetTemplate(month)
-        }
+        val lines = previous.budgetLines
+            .filter { it.month == source }
+            .map { it.copy(id = nextId(), month = month) }
 
-        val priorPlan = source?.let { previous.incomePlans.firstOrNull { plan -> plan.month == it } }
+        val priorPlan = previous.incomePlans.firstOrNull { it.month == source }
 
         previous.copy(
             budgetLines = previous.budgetLines + lines,

@@ -93,8 +93,8 @@ what makes it installable, not an optional polish step.
 ./gradlew test
 ```
 
-205 unit tests over the calculation, analytics, advice, classification,
-category, credential and merge rules. They need no device and no emulator.
+213 unit tests over the calculation, analytics, advice, classification,
+category, credential, merge and empty-account rules. They need no device and no emulator.
 
 ---
 
@@ -184,7 +184,7 @@ very bottom.
 | Change or remove one entry | Tap it → edit, or **Sil** → **Silinməni təsdiqlə** |
 | Look at another month | The month arrows in the header, or tap the month name |
 | Look at a longer stretch | The period buttons on İcmal: **Ay · Keçən · 3 ay · 6 ay · İl** |
-| Start planning a month | **Büdcə** → **Planı köçür** to copy last month's plan forward |
+| Start planning a month | **Büdcə** → **Sətir əlavə et**, or **Planı köçür** once there is an earlier month |
 | Add a planned expense | **Büdcə** → **Sətir əlavə et** |
 | Set expected income | **Büdcə** → **Planlaşdırılan gəlir** → **Dəyiş** |
 | Add, rename or classify a category | **Büdcə** → **Kateqoriyalar** |
@@ -208,6 +208,11 @@ should move to first.
 
 ## Where your data lives
 
+**A new account starts empty.** No categories, no plan, no figures: those are
+the shape somebody gives their own money, and the app does not guess it. The
+first stop is **Büdcə → Kateqoriyalar**, which is why that section sits above
+the delete tools rather than below them.
+
 **Always on the device.** One JSON file in the app's own storage. Every change
 is written there first, before anything is asked of the network — so an edit
 made with no signal is saved, not held in memory and lost when the app closes.
@@ -228,7 +233,8 @@ Then, in the Supabase dashboard:
 
 1. **Create the tables** — paste [`supabase/schema.sql`](supabase/schema.sql)
    into the SQL editor and run it. Running it again later is safe, and is how
-   you pick up changes — the `categories.kind` column is the most recent.
+   you pick up changes — the most recent is the key on (user_id, id), without
+   which the second person to register cannot save anything.
 2. **Turn on email sign-in** — Authentication → Sign In / Providers → Email,
    with sign-ups allowed.
 

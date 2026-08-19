@@ -30,6 +30,41 @@ fun categoryUsage(data: FinanceData, name: String): CategoryUsage = CategoryUsag
     incomePlans = data.incomePlans.count { (it.amounts[name] ?: 0.0) > 0 },
 )
 
+/**
+ * The categories a snapshot's own rows name.
+ *
+ * Recovery, not invention. A snapshot saved before categories were records of
+ * their own carries transactions, budget lines and planned figures but no
+ * list, and the names it used are still there to be read back. A snapshot with
+ * no rows names nothing, which is exactly what a new account should get.
+ */
+fun categoriesFromData(data: FinanceData): List<CategoryDef> {
+    val names = mapOf(
+        TransactionType.EXPENSE to mutableListOf<String>(),
+        TransactionType.INCOME to mutableListOf<String>(),
+    )
+
+    fun add(type: TransactionType, name: String) {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return
+        val bucket = names.getValue(type)
+        if (bucket.none { it.equals(trimmed, ignoreCase = true) }) bucket.add(trimmed)
+    }
+
+    data.transactions.forEach { add(it.type, it.category) }
+    // A budget line is always an expense; a planned income figure always income.
+    data.budgetLines.forEach { add(TransactionType.EXPENSE, it.category) }
+    data.incomePlans.forEach { plan ->
+        plan.amounts.keys.forEach { add(TransactionType.INCOME, it) }
+    }
+
+    return listOf(TransactionType.EXPENSE, TransactionType.INCOME).flatMap { type ->
+        names.getValue(type).mapIndexed { index, name ->
+            CategoryDef(id = "${type.wire}-$index", name = name, type = type)
+        }
+    }
+}
+
 /** Categories of one side of the ledger, in the order they were added. */
 fun categoriesOfType(data: FinanceData, type: TransactionType): List<CategoryDef> =
     data.categories.filter { it.type == type }
