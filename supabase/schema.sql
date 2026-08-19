@@ -51,6 +51,10 @@ create table if not exists public.categories (
                references auth.users (id) on delete cascade,
   name       text not null check (length(btrim(name)) > 0),
   type       text not null check (type in ('income', 'expense')),
+  -- What the category is for, used by the needs/wants frameworks. Null means
+  -- unclassified, which the app reports rather than guessing around.
+  kind       text check (kind is null or kind in
+               ('essential', 'discretionary', 'debt', 'saving')),
   created_at timestamptz not null default now(),
   -- One name per side of the ledger. An expense and an income category may
   -- share a name, because nothing looks a category up without its type.
@@ -75,6 +79,19 @@ create table if not exists public.income_plans (
 -- Brings a project created before income categories were editable up to date.
 alter table public.income_plans
   add column if not exists amounts jsonb not null default '{}'::jsonb;
+
+-- Brings a project created before categories carried a kind up to date.
+alter table public.categories
+  add column if not exists kind text;
+
+do $$
+begin
+  alter table public.categories
+    add constraint categories_kind_check
+    check (kind is null or kind in ('essential', 'discretionary', 'debt', 'saving'));
+exception
+  when duplicate_object then null;
+end $$;
 
 -- Every query the app makes is "my rows, for these months".
 create index if not exists transactions_user_date_idx

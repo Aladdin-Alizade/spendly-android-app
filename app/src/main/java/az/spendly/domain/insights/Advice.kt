@@ -154,7 +154,15 @@ private class Context(
 
 private typealias Rule = (Context) -> Unit
 
+/** Magnitude only — for "X% higher", where the direction is in the words. */
 private fun percent(ratio: Double): String = "${(abs(ratio) * 100).roundToInt()}%"
+
+/** Keeps the sign, for a rate that can genuinely be negative. A retained rate
+ *  of −16% shown as 16% turns the sentence into nonsense. */
+private fun signed(ratio: Double): String = "${(ratio * 100).roundToInt()}%"
+
+/** The gap between two rates is in points, so it carries no per-cent sign. */
+private fun points(ratio: Double): String = "${(abs(ratio) * 100).roundToInt()}"
 
 /* --- what the month looks like against income --------------------- */
 
@@ -222,14 +230,17 @@ private val retainedTrend: Rule = { context ->
                     id = "retained-trend",
                     method = MethodId.RETAINED,
                     priority = if (gap > 0) AdvicePriority.GOOD else AdvicePriority.REVIEW,
+                    // The gap between two rates is in percentage points, not
+                    // per cent — and either rate can be negative, so both keep
+                    // their sign.
                     fact = if (gap > 0) {
                         "Qalan pulun payı son ${rates.size} ayın ortalamasından " +
-                            "${percent(gap)} yüksəkdir " +
-                            "(${percent(context.health.retainedRate)} / ${percent(average)})."
+                            "${points(gap)} faiz bəndi yüksəkdir " +
+                            "(${signed(context.health.retainedRate)} / ${signed(average)})."
                     } else {
                         "Qalan pulun payı son ${rates.size} ayın ortalamasından " +
-                            "${percent(gap)} aşağıdır " +
-                            "(${percent(context.health.retainedRate)} / ${percent(average)})."
+                            "${points(gap)} faiz bəndi aşağıdır " +
+                            "(${signed(context.health.retainedRate)} / ${signed(average)})."
                     },
                     suggestion = if (gap < 0) {
                         "Fərqin gəlirin azalmasından, yoxsa xərcin artmasından gəldiyini " +

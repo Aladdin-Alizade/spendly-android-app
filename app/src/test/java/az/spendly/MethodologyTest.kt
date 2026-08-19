@@ -6,6 +6,7 @@
 package az.spendly
 
 import az.spendly.domain.insights.METHODS
+import az.spendly.domain.insights.MethodId
 import az.spendly.domain.insights.MethodOrigin
 import az.spendly.domain.insights.ORIGIN_LABEL
 import az.spendly.domain.insights.REVIEW_INTERVAL_MONTHS
@@ -42,18 +43,30 @@ class MethodologyRegisterTest {
     @Test
     fun `only claims an external source when there is one`() {
         for ((id, method) in METHODS) {
-            if (method.origin == MethodOrigin.APP) {
-                assertNull(id.name, method.url)
-            } else {
-                assertTrue(id.name, method.url!!.startsWith("https://"))
+            val url = method.url
+            when {
+                method.origin == MethodOrigin.APP -> assertNull(id.name, url)
+                url != null -> assertTrue(id.name, url.startsWith("https://"))
+                // A printed source can be authoritative without a free
+                // canonical URL — the citation still has to be complete
+                // enough to look up.
+                else -> assertTrue(id.name, Regex("\\(\\d{4}\\)").containsMatchIn(method.source))
             }
         }
+    }
+
+    @Test
+    fun `cites the frameworks the classification rules depend on`() {
+        assertTrue(METHODS.getValue(MethodId.FRAMEWORK_50_30_20).url!!.contains("consumerfinance.gov"))
+        assertTrue(METHODS.getValue(MethodId.EMERGENCY_FUND).url!!.contains("consumerfinance.gov"))
+        assertTrue(METHODS.getValue(MethodId.NEEDS_WANTS).url!!.contains("consumerfinance.gov"))
+        assertTrue(METHODS.getValue(MethodId.MONEY_PRINCIPLES).url!!.contains("mymoney.gov"))
     }
 }
 
 class GoingOutOfDateTest {
 
-    private val method = METHODS.getValue(az.spendly.domain.insights.MethodId.ANOMALY)
+    private val method = METHODS.getValue(MethodId.ANOMALY)
         .copy(reviewedOn = "2026-01-15")
 
     @Test

@@ -57,6 +57,10 @@ enum class MethodId {
     ZERO_BASED,
     SINKING_FUND,
     LIFESTYLE,
+    NEEDS_WANTS,
+    FRAMEWORK_50_30_20,
+    EMERGENCY_FUND,
+    MONEY_PRINCIPLES,
 }
 
 val METHODS: Map<MethodId, Methodology> = mapOf(
@@ -128,9 +132,11 @@ val METHODS: Map<MethodId, Methodology> = mapOf(
     ),
     MethodId.ZERO_BASED to Methodology(
         name = "Sıfır-baza büdcəsi",
-        note = "Hər manatın təyinatı olur: planlaşdırılan gəlir − planlaşdırılan xərc = 0.",
-        source = "Zero-based budgeting — Peter Pyhrr (1969)",
-        url = "https://en.wikipedia.org/wiki/Zero-based_budgeting",
+        note = "Hər manatın təyinatı olur: planlaşdırılan gəlir − planlaşdırılan xərc = 0. " +
+            "Korporativ metod kimi yaranıb, sonra ev büdcəsinə uyğunlaşdırılıb.",
+        source = "Pyhrr, P. A. (1970). \"Zero-base budgeting\", Harvard Business Review, " +
+            "48(6), 111–121",
+        url = null,
         origin = MethodOrigin.INTERNATIONAL,
         reviewedOn = REVIEWED,
     ),
@@ -140,6 +146,44 @@ val METHODS: Map<MethodId, Methodology> = mapOf(
         source = "Bölmə əməliyyatı — tətbiqin qaydası",
         url = null,
         origin = MethodOrigin.APP,
+        reviewedOn = REVIEWED,
+    ),
+    MethodId.NEEDS_WANTS to Methodology(
+        name = "Ehtiyac və istək",
+        note = "Xərcin zəruri və istəyə bağlı hissələrə ayrılması. Bölgü mühakimə deyil — " +
+            "hansı kateqoriyanın hansı olduğunu siz təyin edirsiniz.",
+        source = "CFPB — Budgeting for needs and wants",
+        url = "https://www.consumerfinance.gov/consumer-tools/educator-tools/" +
+            "youth-financial-education/teach/activities/budgeting-needs-and-wants/",
+        origin = MethodOrigin.US,
+        reviewedOn = REVIEWED,
+    ),
+    MethodId.FRAMEWORK_50_30_20 to Methodology(
+        name = "50/30/20 çərçivəsi",
+        note = "Gəlirin 50%-i zəruri, 30%-i istəyə bağlı, 20%-i yığım. CFPB bunu bir neçə " +
+            "qaydadan biri kimi öyrədir — hamıya uyğun gəlmir.",
+        source = "Warren & Tyagi, All Your Worth (2005); CFPB — Analyzing budgets",
+        url = "https://www.consumerfinance.gov/consumer-tools/educator-tools/" +
+            "youth-financial-education/teach/activities/analyzing-budgets/",
+        origin = MethodOrigin.US,
+        reviewedOn = REVIEWED,
+    ),
+    MethodId.EMERGENCY_FUND to Methodology(
+        name = "Təcili ehtiyat fondu",
+        note = "Zəruri aylıq xərcin medianı × sizin seçdiyiniz ay sayı. CFPB vahid rəqəm " +
+            "vermir: \"lazım olan məbləğ vəziyyətinizdən asılıdır\".",
+        source = "CFPB — An essential guide to building an emergency fund",
+        url = "https://www.consumerfinance.gov/an-essential-guide-to-building-an-emergency-fund/",
+        origin = MethodOrigin.US,
+        reviewedOn = REVIEWED,
+    ),
+    MethodId.MONEY_PRINCIPLES to Methodology(
+        name = "Beş maliyyə prinsipi",
+        note = "Qazan, yığ və investisiya et, qoru, xərclə, borc al — ABŞ Maliyyə Savadlılığı " +
+            "Komissiyasının çərçivəsi. Bu səhifədəki bölmələrin arxasındakı ümumi məntiq.",
+        source = "MyMoney.gov — MyMoney Five",
+        url = "https://www.mymoney.gov/mymoneyfive",
+        origin = MethodOrigin.US,
         reviewedOn = REVIEWED,
     ),
     MethodId.LIFESTYLE to Methodology(

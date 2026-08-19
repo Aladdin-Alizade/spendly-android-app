@@ -12,6 +12,7 @@ package az.spendly.data
 
 import az.spendly.domain.BudgetLine
 import az.spendly.domain.CategoryDef
+import az.spendly.domain.CategoryKind
 import az.spendly.domain.FinanceData
 import az.spendly.domain.IncomePlan
 import az.spendly.domain.Transaction
@@ -125,6 +126,8 @@ class SupabaseRepository(private val session: SupabaseSession) : FinanceReposito
                 put("user_id", userId)
                 put("name", it.name)
                 put("type", it.type.wire)
+                val kind = it.kind
+                if (kind == null) put("kind", JsonNull) else put("kind", kind.wire)
             }
         }
         rest.upsert("categories", categories.upserts)
@@ -218,6 +221,8 @@ private fun toCategory(row: JsonObject) = CategoryDef(
     id = row.text("id"),
     name = migrateCategory(row.text("name")),
     type = TransactionType.of(row.text("type")),
+    // An unrecognised kind is dropped rather than trusted.
+    kind = CategoryKind.of(row.text("kind").ifBlank { null }),
 )
 
 /**

@@ -24,6 +24,7 @@ import az.spendly.data.SyncingRepository
 import az.spendly.data.describeError
 import az.spendly.domain.BudgetLine
 import az.spendly.domain.CategoryDef
+import az.spendly.domain.CategoryKind
 import az.spendly.domain.FinanceData
 import az.spendly.domain.IncomePlan
 import az.spendly.domain.MonthKey
@@ -35,6 +36,7 @@ import az.spendly.domain.emptyData
 import az.spendly.domain.removeCategory as removeCategoryFrom
 import az.spendly.domain.renameCategory as renameCategoryIn
 import az.spendly.domain.round2
+import az.spendly.domain.setCategoryKind as setCategoryKindIn
 import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -261,8 +263,12 @@ class FinanceViewModel(
 
     /* --- categories ---------------------------------------------------- */
 
-    fun addCategory(name: String, type: TransactionType) = commit { previous ->
-        addCategoryTo(previous, CategoryDef(nextId(), name, type))
+    fun addCategory(name: String, type: TransactionType, kind: CategoryKind? = null) =
+        commit { previous -> addCategoryTo(previous, CategoryDef(nextId(), name, type, kind)) }
+
+    /** Set or clear what a category is for. Touches no amount. */
+    fun setCategoryKind(id: String, kind: CategoryKind?) = commit { previous ->
+        setCategoryKindIn(previous, id, kind)
     }
 
     /** Renames the category and everything that referenced it, in one change. */

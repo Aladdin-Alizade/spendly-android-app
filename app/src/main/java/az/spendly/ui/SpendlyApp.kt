@@ -206,6 +206,7 @@ fun SpendlyApp(
                     onResetAll = viewModel::resetAll,
                     onAddCategory = viewModel::addCategory,
                     onRenameCategory = viewModel::renameCategory,
+                    onSetCategoryKind = viewModel::setCategoryKind,
                     onRemoveCategory = viewModel::removeCategory,
                 )
             }

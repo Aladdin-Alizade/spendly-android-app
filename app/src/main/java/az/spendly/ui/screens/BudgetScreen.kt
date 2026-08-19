@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import az.spendly.domain.BudgetLine
 import az.spendly.domain.CategoryDef
+import az.spendly.domain.CategoryKind
 import az.spendly.domain.FinanceData
 import az.spendly.domain.MonthKey
 import az.spendly.domain.TransactionType
@@ -38,6 +39,7 @@ import az.spendly.domain.categoryUsage
 import az.spendly.domain.formatAZN
 import az.spendly.domain.formatMonth
 import az.spendly.domain.formatSignedAZN
+import az.spendly.domain.insights.KIND_LABEL
 import az.spendly.domain.plannedIncomeRows
 import az.spendly.domain.summarise
 import az.spendly.ui.components.EmptyState
@@ -60,8 +62,9 @@ fun BudgetScreen(
     onSetIncomePlan: (MonthKey, Map<String, Double>) -> Unit,
     onClearMonthPlan: (MonthKey) -> Unit,
     onResetAll: () -> Unit,
-    onAddCategory: (String, TransactionType) -> Unit,
+    onAddCategory: (String, TransactionType, CategoryKind?) -> Unit,
     onRenameCategory: (String, String) -> Unit,
+    onSetCategoryKind: (String, CategoryKind?) -> Unit,
     onRemoveCategory: (String, String?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -385,6 +388,7 @@ fun BudgetScreen(
             type = type,
             onAdd = onAddCategory,
             onRename = onRenameCategory,
+            onSetKind = onSetCategoryKind,
             onRemove = onRemoveCategory,
             onDismiss = { editingCategory = null },
         )
@@ -452,14 +456,17 @@ private fun CategoryList(
 
             MoneyRow(
                 title = category.name,
-                meta = if (total == 0) {
-                    "istifadə olunmur"
-                } else {
-                    listOfNotNull(
-                        usage.transactions.takeIf { it > 0 }?.let { "$it əməliyyat" },
-                        usage.budgetLines.takeIf { it > 0 }?.let { "$it büdcə sətri" },
-                    ).joinToString(" · ")
-                },
+                meta = listOfNotNull(
+                    category.kind?.let { KIND_LABEL[it] },
+                    if (total == 0) {
+                        "istifadə olunmur"
+                    } else {
+                        listOfNotNull(
+                            usage.transactions.takeIf { it > 0 }?.let { "$it əməliyyat" },
+                            usage.budgetLines.takeIf { it > 0 }?.let { "$it büdcə sətri" },
+                        ).joinToString(" · ")
+                    },
+                ).joinToString(" · "),
                 amount = "Dəyiş",
                 amountColor = colors.accent,
                 onClick = { onSelect(category) },

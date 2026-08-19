@@ -70,6 +70,45 @@ val EXPENSE_CATEGORIES = listOf(
 val INCOME_CATEGORIES = listOf("Maaş", "Əlavə gəlir")
 
 /**
+ * What a category is *for*, which is what the needs/wants frameworks measure.
+ *
+ * Deliberately optional. Nothing guesses it: an unclassified category stays
+ * unclassified, and every analysis that depends on this reports how much of
+ * the spending it could account for rather than quietly excluding the rest.
+ *
+ *   ESSENTIAL      — the household would struggle without it
+ *   DISCRETIONARY  — chosen rather than required
+ *   DEBT           — a repayment on money already borrowed
+ *   SAVING         — money set aside rather than consumed
+ */
+@Serializable
+enum class CategoryKind {
+    @SerialName("essential")
+    ESSENTIAL,
+
+    @SerialName("discretionary")
+    DISCRETIONARY,
+
+    @SerialName("debt")
+    DEBT,
+
+    @SerialName("saving")
+    SAVING;
+
+    /** The wire value, which is what a stored row holds. */
+    val wire: String get() = name.lowercase()
+
+    companion object {
+        val ALL = listOf(ESSENTIAL, DISCRETIONARY, DEBT, SAVING)
+
+        /** Null for anything that is not one of the four, so an unrecognised
+         *  kind is dropped rather than trusted. */
+        fun of(value: String?): CategoryKind? =
+            ALL.firstOrNull { it.wire == value?.lowercase() }
+    }
+}
+
+/**
  * A category is referenced by name, the way the spreadsheet did it and the way
  * every stored row already does. The id exists so a rename is an edit to one
  * record rather than a new category, and so the name can change without the
@@ -80,6 +119,8 @@ data class CategoryDef(
     val id: String,
     val name: String,
     val type: TransactionType,
+    /** Unset means unclassified, and the analyses say so. */
+    val kind: CategoryKind? = null,
 )
 
 /** The categories a new account starts with. Ids are stable, so seeding the

@@ -101,6 +101,20 @@ fun addCategory(data: FinanceData, category: CategoryDef): FinanceData =
     data.copy(categories = data.categories + category.copy(name = category.name.trim()))
 
 /**
+ * Set or clear what a category is for.
+ *
+ * Only the definition moves. No transaction, budget line or planned figure is
+ * touched, so classifying a category cannot change a single total the app
+ * reports — it only decides which frameworks can read it.
+ */
+fun setCategoryKind(data: FinanceData, id: String, kind: CategoryKind?): FinanceData =
+    data.copy(
+        categories = data.categories.map { category ->
+            if (category.id == id) category.copy(kind = kind) else category
+        },
+    )
+
+/**
  * Rename the category and everything that names it, in one step. Nothing here
  * touches an amount, so every total the app reports is unchanged by a rename.
  */

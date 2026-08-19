@@ -93,8 +93,8 @@ what makes it installable, not an optional polish step.
 ./gradlew test
 ```
 
-173 unit tests over the calculation, analytics, advice, category, validation
-and merge rules. They need no device and no emulator.
+188 unit tests over the calculation, analytics, advice, classification,
+category, validation and merge rules. They need no device and no emulator.
 
 ---
 
@@ -146,6 +146,15 @@ keçirməyə dəyər*, three each, ranked by the manat at stake rather than by
 percentage — a 40% overrun on 5 ₼ must not outrank 200 ₼. Only the largest
 finding per category is kept, so one category cannot fill a bucket.
 
+Three of the panels need to know what your spending is *for*, so each expense
+category can carry a kind — **zəruri**, **istəyə bağlı**, **borc ödənişi** or
+**yığım** — set in **Büdcə → Kateqoriyalar**. Nothing guesses it, and nothing
+is assumed: *Ehtiyac və istək*, the *50/30/20* comparison and the *təcili
+ehtiyat fondu* target all report how much of the month's spending they could
+account for, and stay silent below 90% rather than publishing a confident
+number that is wrong. When they do stay silent they name the categories still
+unclassified, so the fix is one tap away.
+
 **Metodologiya** at the bottom lists every reference, its origin, and the date
 it was last verified. Guidance goes out of date and no offline app can know
 that; what it can do is refuse to present an unchecked reference as current.
@@ -178,7 +187,7 @@ very bottom.
 | Start planning a month | **Büdcə** → **Planı köçür** to copy last month's plan forward |
 | Add a planned expense | **Büdcə** → **Sətir əlavə et** |
 | Set expected income | **Büdcə** → **Planlaşdırılan gəlir** → **Dəyiş** |
-| Add or rename a category | **Büdcə** → **Kateqoriyalar** |
+| Add, rename or classify a category | **Büdcə** → **Kateqoriyalar** |
 | Wipe one month's plan | **Büdcə** → **Silmə** → **Planı sil** → **Təsdiqlə** |
 | Wipe everything | **Büdcə** → **Silmə** → **Bütün məlumatları sil** |
 | See the account, or sign out | The round button at the top right |
@@ -216,7 +225,8 @@ SUPABASE_PUBLISHABLE_KEY=YOUR-PUBLISHABLE-KEY
 Then, in the Supabase dashboard:
 
 1. **Create the tables** — paste [`supabase/schema.sql`](supabase/schema.sql)
-   into the SQL editor and run it. Running it again later is safe.
+   into the SQL editor and run it. Running it again later is safe, and is how
+   you pick up changes — the `categories.kind` column is the most recent.
 2. **Turn on email sign-in** — Authentication → Sign In / Providers → Email,
    with sign-ups allowed.
 

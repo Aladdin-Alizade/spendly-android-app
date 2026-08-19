@@ -12,10 +12,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import az.spendly.domain.CategoryDef
+import az.spendly.domain.CategoryKind
 import az.spendly.domain.FinanceData
 import az.spendly.domain.TransactionType
 import az.spendly.domain.categoriesOfType
 import az.spendly.domain.categoryUsage
+import az.spendly.domain.insights.KIND_LABEL
 import az.spendly.domain.validateCategoryName
 import az.spendly.ui.theme.spendlyColors
 
@@ -34,8 +36,9 @@ fun CategoryDialog(
     data: FinanceData,
     category: CategoryDef?,
     type: TransactionType,
-    onAdd: (String, TransactionType) -> Unit,
+    onAdd: (String, TransactionType, CategoryKind?) -> Unit,
     onRename: (String, String) -> Unit,
+    onSetKind: (String, CategoryKind?) -> Unit,
     onRemove: (String, String?) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -43,6 +46,7 @@ fun CategoryDialog(
     val kind = category?.type ?: type
 
     var name by remember { mutableStateOf(category?.name.orEmpty()) }
+    var categoryKind by remember { mutableStateOf(category?.kind) }
     var showErrors by remember { mutableStateOf(false) }
     var removing by remember { mutableStateOf(false) }
 
@@ -85,8 +89,11 @@ fun CategoryDialog(
                         } else {
                             if (category != null) {
                                 onRename(category.id, name)
+                                if (categoryKind != category.kind) {
+                                    onSetKind(category.id, categoryKind)
+                                }
                             } else {
-                                onAdd(name.trim(), kind)
+                                onAdd(name.trim(), kind, categoryKind)
                             }
                             onDismiss()
                         }
@@ -137,6 +144,21 @@ fun CategoryDialog(
                 error = if (showErrors) error else null,
             )
 
+            if (kind == TransactionType.EXPENSE) {
+                // What the category is for. Only spending has a kind: the
+                // frameworks that read it are all about where money goes.
+                KindPicker(
+                    selected = categoryKind,
+                    onSelect = { categoryKind = it },
+                )
+                Text(
+                    text = "Ehtiyac/istək bölgüsü, 50/30/20 və təcili fond hesablamaları " +
+                        "bundan istifadə edir. Boş qalsa, həmin bölmələr bunu bildirir.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.textFaint,
+                )
+            }
+
             if (inUse) {
                 Text(
                     text = "Adın dəyişməsi bu kateqoriyanı işlədən " +
@@ -151,4 +173,19 @@ fun CategoryDialog(
             }
         }
     }
+}
+
+/** One of the four kinds, or none — an unclassified category is a valid
+ *  state, and the frameworks report it rather than guessing around it. */
+@Composable
+private fun KindPicker(selected: CategoryKind?, onSelect: (CategoryKind?) -> Unit) {
+    val options = listOf<Pair<CategoryKind?, String>>(null to "Təsnif edilməyib") +
+        CategoryKind.ALL.map { it to KIND_LABEL.getValue(it) }
+
+    CategoryPicker(
+        label = "Növü",
+        selected = options.first { it.first == selected }.second,
+        options = options.map { it.second },
+        onSelect = { label -> onSelect(options.first { it.second == label }.first) },
+    )
 }

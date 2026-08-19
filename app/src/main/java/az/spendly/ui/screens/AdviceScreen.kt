@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -40,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import az.spendly.domain.FinanceData
+import az.spendly.domain.CategoryKind
 import az.spendly.domain.MonthKey
 import az.spendly.domain.formatAZN
 import az.spendly.domain.formatMonth
@@ -49,13 +51,21 @@ import az.spendly.domain.insights.AdvicePriority
 import az.spendly.domain.insights.METHODS
 import az.spendly.domain.insights.ORIGIN_LABEL
 import az.spendly.domain.insights.REVIEW_INTERVAL_MONTHS
+import az.spendly.domain.insights.CLASSIFICATION_COVERAGE_MIN
+import az.spendly.domain.insights.KIND_LABEL
+import az.spendly.domain.insights.Reference503020
+import az.spendly.domain.insights.SpendingSplit
 import az.spendly.domain.insights.budgetAdvice
+import az.spendly.domain.insights.classifySpending
+import az.spendly.domain.insights.emergencyFund
+import az.spendly.domain.insights.fiftyThirtyTwenty
 import az.spendly.domain.insights.methodsNeedingReview
 import az.spendly.domain.insights.needsReview
 import az.spendly.domain.today
 import az.spendly.ui.components.Micro
 import az.spendly.ui.components.Panel
 import az.spendly.ui.components.Pill
+import az.spendly.ui.components.Swatch
 import az.spendly.ui.theme.Radius
 import az.spendly.ui.theme.spendlyColors
 import kotlin.math.min
@@ -67,6 +77,10 @@ fun AdviceScreen(data: FinanceData, month: MonthKey, modifier: Modifier = Modifi
     val asOf = today()
     val report = remember(data, month, asOf) { budgetAdvice(data, month, asOf) }
     val stale = remember(asOf) { methodsNeedingReview(asOf) }
+    val split = remember(data, month) { classifySpending(data, month) }
+    val framework = remember(data, month) { fiftyThirtyTwenty(data, month) }
+    var fundMonths by remember { mutableStateOf(3) }
+    val fund = remember(data, month, fundMonths) { emergencyFund(data, month, fundMonths) }
     val health = report.health
 
     val nothing = report.attention.isEmpty() && report.good.isEmpty() && report.review.isEmpty()
@@ -158,6 +172,190 @@ fun AdviceScreen(data: FinanceData, month: MonthKey, modifier: Modifier = Modifi
             }
         }
 
+        /* --- what the spending is for -------------------------------- */
+        item {
+            Panel(
+                title = "Ehtiyac və istək",
+                note = if (split.total > 0) {
+                    "${(split.coverage * 100).roundToInt()}% təsnif edilib"
+                } else {
+                    null
+                },
+            ) {
+                if (split.hasCoverage) {
+                    val order = listOf(
+                        CategoryKind.ESSENTIAL,
+                        CategoryKind.DEBT,
+                        CategoryKind.DISCRETIONARY,
+                        CategoryKind.SAVING,
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(10.dp)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(colors.track),
+                    ) {
+                        order.forEach { kind ->
+                            val share = (split.of(kind) / split.total).toFloat()
+                            if (share > 0f) {
+                                Box(
+                                    modifier = Modifier
+                                        .weight(share)
+                                        .fillMaxHeight()
+                                        .background(kindColor(kind)),
+                                )
+                            }
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier.padding(top = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        order.forEach { kind ->
+                            val amount = split.of(kind)
+                            if (amount <= 0) return@forEach
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Swatch(kindColor(kind))
+                                Text(
+                                    text = KIND_LABEL.getValue(kind),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = colors.textMuted,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Text(
+                                    text = formatAZN(amount),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Medium,
+                                    color = colors.text,
+                                )
+                                Text(
+                                    text = "${((amount / split.total) * 100).roundToInt()}%",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = colors.textFaint,
+                                )
+                            }
+                        }
+                    }
+
+                    FrameworkNote(
+                        "Bu bölgü mühakimə deyil — hansı kateqoriyanın zəruri olduğunu " +
+                            "siz təyin edirsiniz.",
+                    )
+                } else {
+                    Missing(split)
+                }
+            }
+        }
+
+        /* --- against a published reference ---------------------------- */
+        item {
+            Panel(title = "50/30/20 çərçivəsi", note = "istinad — qayda deyil") {
+                if (framework != null) {
+                    FrameworkRow(
+                        label = "Zəruri (ehtiyac + borc)",
+                        actual = framework.needsShare,
+                        reference = Reference503020.NEEDS,
+                        amount = framework.needs,
+                    )
+                    FrameworkRow(
+                        label = "İstəyə bağlı",
+                        actual = framework.wantsShare,
+                        reference = Reference503020.WANTS,
+                        amount = framework.wants,
+                    )
+                    FrameworkRow(
+                        label = "Yığım və qalan",
+                        actual = framework.savingsShare,
+                        reference = Reference503020.SAVINGS,
+                        amount = framework.savings,
+                    )
+                    FrameworkNote(
+                        "CFPB bunu bir neçə büdcə qaydasından biri kimi öyrədir — hamıya " +
+                            "uyğun gəlmir. Borc ödənişləri «zəruri» tərəfdə sayılır.",
+                    )
+                } else {
+                    Missing(
+                        split = split,
+                        extra = if (split.total > 0 && split.hasCoverage) {
+                            "Bu ay gəlir qeyd edilməyib."
+                        } else {
+                            null
+                        },
+                    )
+                }
+            }
+        }
+
+        /* --- a target, and only a target ------------------------------ */
+        item {
+            Panel(title = "Təcili ehtiyat fondu", note = "yalnız hədəf") {
+                if (fund != null) {
+                    Micro("Zəruri aylıq xərc (median)")
+                    Text(
+                        text = formatAZN(fund.essentialMonthly),
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = colors.text,
+                    )
+                    Text(
+                        text = "${fund.sampleMonths} aylıq məlumat əsasında",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textFaint,
+                    )
+
+                    Row(
+                        modifier = Modifier.padding(top = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        listOf(3, 6, 12).forEach { option ->
+                            val selected = fundMonths == option
+                            Text(
+                                text = "$option ay",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                color = if (selected) colors.onAccent else colors.textMuted,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(Radius.xs))
+                                    .background(if (selected) colors.accent else colors.surfaceInset)
+                                    .clickable { fundMonths = option }
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                            )
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Micro("Hədəf")
+                        Text(
+                            text = formatAZN(fund.target),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = colors.text,
+                        )
+                    }
+
+                    FrameworkNote(
+                        "CFPB vahid rəqəm vermir — məbləğ vəziyyətinizdən asılıdır. Tətbiq " +
+                            "hesab qalığınızı görmür, ona görə hədəfə nə qədər yaxın " +
+                            "olduğunuzu deyə bilmir.",
+                    )
+                } else {
+                    Missing(
+                        split = split,
+                        extra = "Hesablama üçün ən azı 3 ayın təsnif edilmiş xərci lazımdır.",
+                    )
+                }
+            }
+        }
+
         if (nothing) {
             item {
                 Panel(title = "Müşahidə yoxdur") {
@@ -229,6 +427,129 @@ fun AdviceScreen(data: FinanceData, month: MonthKey, modifier: Modifier = Modifi
 }
 
 /* ------------------------------------------------------------------ */
+
+/** Colour stands for a kind here, the same way it stands for a category
+ *  elsewhere: one hue, one meaning. */
+@Composable
+private fun kindColor(kind: CategoryKind): Color = when (kind) {
+    CategoryKind.ESSENTIAL -> spendlyColors.series[0]
+    CategoryKind.DEBT -> spendlyColors.series[2]
+    CategoryKind.DISCRETIONARY -> spendlyColors.series[3]
+    CategoryKind.SAVING -> spendlyColors.series[1]
+}
+
+/**
+ * Why a framework is not shown.
+ *
+ * Saying "not enough data" and stopping is a dead end; naming the categories
+ * that are unclassified turns it into something the user can act on in one
+ * tap from the Büdcə screen.
+ *
+ * The coverage sentence appears only when coverage is what is actually
+ * missing. Telling somebody who has classified everything that they need to
+ * classify 90% of it sends them to do work that will not help — the real
+ * reason is in `extra`.
+ */
+@Composable
+private fun Missing(split: SpendingSplit, extra: String? = null) {
+    val colors = spendlyColors
+
+    if (split.total <= 0) {
+        Text(
+            text = "Bu ay üçün xərc qeydə alınmayıb.",
+            style = MaterialTheme.typography.bodySmall,
+            color = colors.textMuted,
+        )
+        return
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (!split.hasCoverage) {
+            Text(
+                text = "Xərclərin ${(split.coverage * 100).roundToInt()}%-i təsnif edilib — " +
+                    "hesablama üçün ən azı " +
+                    "${(CLASSIFICATION_COVERAGE_MIN * 100).roundToInt()}% lazımdır.",
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textMuted,
+            )
+            if (split.missing.isNotEmpty()) {
+                Text(
+                    text = "Təsnif edilməyib: ${split.missing.take(5).joinToString(", ")}" +
+                        if (split.missing.size > 5) " və daha ${split.missing.size - 5}" else "",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.text,
+                )
+                Text(
+                    text = "Büdcə → Kateqoriyalar bölməsində hər birinin növünü seçin.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.textFaint,
+                )
+            }
+        }
+        if (extra != null) {
+            Text(
+                text = extra,
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textMuted,
+            )
+        }
+    }
+}
+
+/** One line of the reference split: what it is here, against what the
+ *  framework suggests, with the reference drawn on the bar. */
+@Composable
+private fun FrameworkRow(label: String, actual: Double, reference: Double, amount: Double) {
+    val colors = spendlyColors
+    Column(modifier = Modifier.padding(bottom = 12.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textMuted,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = "${(actual * 100).roundToInt()}%",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = colors.text,
+            )
+            Text(
+                text = " / ${(reference * 100).roundToInt()}%",
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textFaint,
+            )
+        }
+        Box(modifier = Modifier.padding(vertical = 6.dp)) {
+            Track(
+                value = actual.coerceIn(0.0, 1.0),
+                color = if (actual > reference) colors.series[3] else colors.series[1],
+                reference = reference,
+            )
+        }
+        Text(
+            text = formatAZN(amount),
+            style = MaterialTheme.typography.bodySmall,
+            color = colors.textFaint,
+        )
+    }
+}
+
+/** The sentence that says what a framework is and is not. */
+@Composable
+private fun FrameworkNote(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodySmall,
+        color = spendlyColors.textFaint,
+        modifier = Modifier.padding(top = 10.dp),
+    )
+}
 
 @Composable
 private fun Figure(
