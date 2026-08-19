@@ -1,6 +1,7 @@
 package az.spendly
 
 import android.app.Application
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -9,7 +10,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -17,15 +20,50 @@ import az.spendly.store.AuthStatus
 import az.spendly.store.AuthViewModel
 import az.spendly.store.FinanceViewModel
 import az.spendly.ui.AuthScreen
+import az.spendly.ui.RecoveryScreen
 import az.spendly.ui.SpendlyApp
 import az.spendly.ui.theme.SpendlyTheme
 import az.spendly.ui.theme.spendlyColors
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 class MainActivity : ComponentActivity() {
+
+    /**
+     * A reset link that has just opened the app.
+     *
+     * Supabase verifies the link and redirects to the deep link with the
+     * session in the URI fragment — which is not a query string, so it has to
+     * be read off the raw URI rather than through getQueryParameter.
+     */
+    private val recovery = mutableStateOf<Pair<String, String?>?>(null)
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        readRecoveryLink(intent)
+    }
+
+    /** The tokens a reset link carried, or nothing when it was not one. */
+    private fun readRecoveryLink(intent: Intent?) {
+        val fragment = intent?.data?.fragment ?: return
+        val parts = fragment.split("&")
+            .mapNotNull { entry ->
+                val (key, value) = entry.split("=", limit = 2).let {
+                    if (it.size == 2) it[0] to it[1] else return@mapNotNull null
+                }
+                key to value
+            }
+            .toMap()
+
+        val access = parts["access_token"] ?: return
+        if (parts["type"] != null && parts["type"] != "recovery") return
+        recovery.value = access to parts["refresh_token"]
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+
+        readRecoveryLink(intent)
 
         setContent {
             SpendlyTheme {
@@ -34,7 +72,7 @@ class MainActivity : ComponentActivity() {
                         .fillMaxSize()
                         .background(spendlyColors.background),
                 ) {
-                    Root()
+                    Root(recovery = recovery.value, onRecoveryHandled = { recovery.value = null })
                 }
             }
         }
@@ -46,16 +84,35 @@ class MainActivity : ComponentActivity() {
  * sign-in screen in between when there is an account to sign into.
  */
 @Composable
-private fun Root() {
+private fun Root(
+    recovery: Pair<String, String?>? = null,
+    onRecoveryHandled: () -> Unit = {},
+) {
     val application = LocalContext.current.applicationContext as Application
     val auth: AuthViewModel = viewModel(factory = AuthViewModel.factory(application))
     val authState by auth.state.collectAsState()
+
+    LaunchedEffect(recovery) {
+        val tokens = recovery ?: return@LaunchedEffect
+        auth.startRecovery(tokens.first, tokens.second)
+        onRecoveryHandled()
+    }
 
     when (authState.status) {
         AuthStatus.SIGNED_OUT -> AuthScreen(
             state = authState,
             onSignIn = auth::signIn,
             onSignUp = auth::signUp,
+            onSendPasswordReset = auth::sendPasswordReset,
+            onClearMessages = auth::clearMessages,
+        )
+
+        // A reset link signed the app in; the password it was opened to set is
+        // still unset, so this comes before the app itself.
+        AuthStatus.RECOVERING -> RecoveryScreen(
+            state = authState,
+            onSubmit = auth::completePasswordReset,
+            onCancel = auth::signOut,
         )
 
         AuthStatus.SIGNED_IN, AuthStatus.NOT_REQUIRED -> {

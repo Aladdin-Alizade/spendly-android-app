@@ -84,6 +84,23 @@ fun validatePasswordChange(input: PasswordChangeInput): PasswordChangeErrors {
 }
 
 /**
+ * Setting a new password after a reset link.
+ *
+ * There is no current password to ask for here — the link out of the mailbox
+ * is what stands in for it, which is the whole point of the flow.
+ */
+fun validateNewPassword(next: String, repeat: String): PasswordChangeErrors {
+    val nextError = when {
+        next.isEmpty() -> "Yeni şifrəni daxil edin"
+        next.length < MIN_PASSWORD_LENGTH ->
+            "Yeni şifrə ən azı $MIN_PASSWORD_LENGTH simvol olmalıdır"
+        else -> null
+    }
+    val repeatError = if (repeat != next) "Şifrələr uyğun gəlmir" else null
+    return PasswordChangeErrors(next = nextError, repeat = repeatError)
+}
+
+/**
  * Supabase's auth errors, in the user's language. Anything unrecognised is
  * passed through rather than replaced with a vague sentence.
  */
@@ -98,12 +115,32 @@ fun authErrorMessage(message: String): String = when {
         "Şifrə ən azı $MIN_PASSWORD_LENGTH simvol olmalıdır"
     contains(message, "new password should be different", "same as the old password") ->
         "Yeni şifrə köhnəsindən fərqli olmalıdır"
+    contains(message, "expired", "invalid token", "invalid jwt", "otp_expired", "link is invalid") ->
+        "Link vaxtı keçib və ya artıq istifadə olunub. Yenidən sıfırlama tələb edin."
+    /*
+     * Supabase's built-in mail service allows a handful of messages an hour,
+     * and it counts sign-up confirmations, reset links and everything else
+     * together. Calling that "too many attempts" blames the person for typing
+     * their password once — the limit is on the mail, not on them.
+     */
+    contains(message, "email rate limit", "over_email_send_rate_limit") ->
+        "Supabase-in e-poçt limiti dolub — pulsuz xidmət saatda yalnız bir neçə " +
+            "məktub göndərir. Bir saat gözləyin, təsdiqi söndürün, və ya öz SMTP-nizi qoşun."
+
+    WAIT_SECONDS.find(message) != null ->
+        "Növbəti cəhd üçün ${WAIT_SECONDS.find(message)!!.groupValues[1]} saniyə " +
+            "gözləmək lazımdır."
+
     contains(message, "rate limit", "too many requests") ->
-        "Çox sayda cəhd oldu. Bir az gözləyin."
+        "Çox sayda sorğu göndərilib. Bir az gözləyin."
     contains(message, "signups not allowed", "signup is disabled") ->
         "Qeydiyyat Supabase panelində bağlıdır (Authentication → Sign In / Providers)."
     else -> message
 }
+
+/** How long the server itself said to wait, when it says so. */
+private val WAIT_SECONDS =
+    Regex("you can only request this after (\\d+) seconds?", RegexOption.IGNORE_CASE)
 
 private fun contains(message: String, vararg needles: String): Boolean {
     val lower = message.lowercase()

@@ -56,12 +56,17 @@ fun AuthScreen(
     state: AuthState,
     onSignIn: (String, String) -> Unit,
     onSignUp: (String, String) -> Unit,
+    onSendPasswordReset: (String) -> Unit,
+    /** Clears whatever the last attempt said, so one screen's message cannot
+     *  be read as another screen's answer. */
+    onClearMessages: () -> Unit,
 ) {
     val colors = spendlyColors
     var mode by remember { mutableStateOf(AuthMode.SIGN_IN) }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var showErrors by remember { mutableStateOf(false) }
+    var resetting by remember { mutableStateOf(false) }
 
     val errors = validateCredentials(email, password, mode)
     val visible = if (showErrors) errors else CredentialErrors()
@@ -72,6 +77,18 @@ fun AuthScreen(
             return
         }
         if (mode == AuthMode.SIGN_UP) onSignUp(email, password) else onSignIn(email, password)
+    }
+
+    if (resetting) {
+        ResetRequest(
+            state = state,
+            onSend = onSendPasswordReset,
+            onBack = {
+                onClearMessages()
+                resetting = false
+            },
+        )
+        return
     }
 
     Box(
@@ -201,6 +218,29 @@ fun AuthScreen(
                 )
             }
 
+            if (mode == AuthMode.SIGN_IN) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    TextButton(
+                        onClick = {
+                            // A sign-up confirmation left over from a moment
+                            // ago would otherwise read as "link sent".
+                            onClearMessages()
+                            resetting = true
+                            showErrors = false
+                        },
+                    ) {
+                        Text(
+                            text = "Şifrənizi unutmusunuz?",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.textMuted,
+                        )
+                    }
+                }
+            }
+
             Button(
                 onClick = ::submit,
                 enabled = !state.busy,
@@ -248,4 +288,101 @@ private fun FieldError(message: String) {
         color = spendlyColors.negative,
         modifier = Modifier.padding(top = 3.dp),
     )
+}
+
+/**
+ * Ask for the reset link.
+ *
+ * The confirmation is the same whether or not the address has an account. An
+ * app that says "no such user" is an app that will tell anyone which addresses
+ * are registered, and somebody who genuinely mistyped their own address is
+ * helped just as well by being told to check the mailbox.
+ */
+@Composable
+private fun ResetRequest(
+    state: AuthState,
+    onSend: (String) -> Unit,
+    onBack: () -> Unit,
+) {
+    val colors = spendlyColors
+    var email by remember { mutableStateOf("") }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(colors.background)
+            .verticalScroll(rememberScrollState())
+            .imePadding()
+            .padding(24.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            modifier = Modifier
+                .widthIn(max = 420.dp)
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(Radius.lg))
+                .background(colors.surface)
+                .border(1.dp, colors.border, RoundedCornerShape(Radius.lg))
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Text(
+                text = "Şifrəni sıfırla",
+                style = MaterialTheme.typography.titleMedium,
+                color = colors.text,
+            )
+            Text(
+                text = "E-poçt ünvanınızı yazın — şifrəni yeniləmək üçün link göndərəcəyik.",
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textMuted,
+            )
+
+            if (state.notice != null) {
+                Text(
+                    text = state.notice,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.positive,
+                )
+            } else {
+                Column {
+                    Micro("E-poçt")
+                    OutlinedTextField(
+                        value = email,
+                        onValueChange = { email = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Email,
+                            imeAction = ImeAction.Done,
+                        ),
+                    )
+                }
+
+                state.failure?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.negative,
+                    )
+                }
+
+                Button(
+                    onClick = { onSend(email) },
+                    enabled = !state.busy && email.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(if (state.busy) "Gözləyin…" else "Link göndər")
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                TextButton(onClick = onBack) { Text("Girişə qayıt") }
+            }
+        }
+    }
 }

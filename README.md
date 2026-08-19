@@ -93,7 +93,7 @@ what makes it installable, not an optional polish step.
 ./gradlew test
 ```
 
-197 unit tests over the calculation, analytics, advice, classification,
+205 unit tests over the calculation, analytics, advice, classification,
 category, credential and merge rules. They need no device and no emulator.
 
 ---
@@ -192,6 +192,7 @@ very bottom.
 | Wipe everything | **Büdcə** → **Silmə** → **Bütün məlumatları sil** |
 | See the account, or sign out | The round button at the top right |
 | Change your password | The account button → **Şifrə** → **Dəyiş** |
+| Reset a forgotten password | **Şifrənizi unutmusunuz?** on the sign-in screen |
 
 Every destructive action needs a second tap to confirm.
 

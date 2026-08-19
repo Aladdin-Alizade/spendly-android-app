@@ -52,6 +52,12 @@ data class AccountUser(
     val createdAt: String?,
 )
 
+/**
+ * Where a reset link lands. Answered by the launcher activity, and listed in
+ * the Supabase dashboard under Authentication -> URL Configuration.
+ */
+const val RECOVERY_LINK = "spendly://reset"
+
 object SupabaseConfig {
     val url: String = BuildConfig.SUPABASE_URL.trim().trimEnd('/')
     val key: String = BuildConfig.SUPABASE_PUBLISHABLE_KEY.trim()
@@ -207,6 +213,56 @@ class SupabaseSession(context: Context) {
         payload["id"]?.jsonPrimitive?.contentOrNull()?.let { userId = it }
     }
 
+    /**
+     * Ask for a reset link.
+     *
+     * `redirect_to` is the deep link this app answers, so the link in the
+     * mailbox comes back here rather than to a browser page that cannot set an
+     * app's password. The address has to be listed under Authentication -> URL
+     * Configuration or Supabase refuses to redirect to it, which is what stops
+     * a link being pointed somewhere else.
+     */
+    fun sendPasswordReset(email: String) {
+        post(
+            "${SupabaseConfig.url}/auth/v1/recover?redirect_to=$RECOVERY_LINK",
+            buildJsonObject { put("email", email.trim()) },
+        )
+    }
+
+    /**
+     * Adopt the session a reset link carried back, so the new password can be
+     * set as that user.
+     */
+    fun adoptRecovery(accessToken: String, refreshToken: String?) {
+        accessToken.let { this.accessToken = it }
+        refreshToken?.let { this.refreshToken = it }
+        // The link's own token is short-lived; treating it as expired forces a
+        // refresh rather than a silent failure on the first write.
+        expiresAt = System.currentTimeMillis() / 1000 + 3600
+
+        val user = get("${SupabaseConfig.url}/auth/v1/user")
+        userId = user["id"]?.jsonPrimitive?.contentOrNull()
+        email = user["email"]?.jsonPrimitive?.contentOrNull()
+        createdAt = user["created_at"]?.jsonPrimitive?.contentOrNull()
+
+        preferences.edit()
+            .putString(KEY_ACCESS, accessToken)
+            .putString(KEY_REFRESH, refreshToken)
+            .putLong(KEY_EXPIRES, expiresAt)
+            .putString(KEY_USER, userId)
+            .putString(KEY_EMAIL, email)
+            .putString(KEY_CREATED, createdAt)
+            .apply()
+    }
+
+    /** Set the password of the session a reset link established. */
+    fun setPassword(nextPassword: String) {
+        put(
+            "${SupabaseConfig.url}/auth/v1/user",
+            buildJsonObject { put("password", nextPassword) },
+        )
+    }
+
     fun signOut() {
         val token = accessToken
         if (token != null) {
@@ -266,6 +322,17 @@ class SupabaseSession(context: Context) {
 
     private fun put(url: String, body: JsonObject): JsonObject =
         send("PUT", url, body)
+
+    private fun get(url: String): JsonObject {
+        val builder = Request.Builder()
+            .url(url)
+            .addHeader("apikey", SupabaseConfig.key)
+        accessToken?.let { builder.addHeader("Authorization", "Bearer $it") }
+
+        val text = execute(builder.get().build())
+        return runCatching { supabaseJson.parseToJsonElement(text).jsonObject }
+            .getOrElse { throw SupabaseException("Supabase cavabı oxunmadı") }
+    }
 
     private fun post(url: String, body: JsonObject): JsonObject = send("POST", url, body)
 

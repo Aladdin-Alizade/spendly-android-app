@@ -8,6 +8,7 @@ import az.spendly.domain.MIN_PASSWORD_LENGTH
 import az.spendly.domain.PasswordChangeInput
 import az.spendly.domain.authErrorMessage
 import az.spendly.domain.validateCredentials
+import az.spendly.domain.validateNewPassword
 import az.spendly.domain.validatePasswordChange
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -110,6 +111,73 @@ class PasswordChangeTest {
         assertTrue(
             authErrorMessage("New password should be different from the old password.")
                 .contains("fərqli olmalıdır"),
+        )
+    }
+}
+
+class NewPasswordTest {
+
+    @Test
+    fun `accepts a matching pair that is long enough`() {
+        assertFalse(validateNewPassword("brand-new", "brand-new").any)
+    }
+
+    @Test
+    fun `holds it to the same length rule as everywhere else`() {
+        val short = "x".repeat(MIN_PASSWORD_LENGTH - 1)
+        assertNotNull(validateNewPassword(short, short).next)
+    }
+
+    @Test
+    fun `catches a mistyped repeat`() {
+        assertNotNull(validateNewPassword("brand-new", "brand-neW").repeat)
+    }
+
+    @Test
+    fun `asks for no current password — the link is what stands in for it`() {
+        assertNull(validateNewPassword("brand-new", "brand-new").current)
+    }
+
+    @Test
+    fun `says a spent or expired link is spent, and what to do`() {
+        assertTrue(
+            authErrorMessage("Email link is invalid or has expired")
+                .contains("Yenidən sıfırlama"),
+        )
+    }
+}
+
+class RateLimitTest {
+
+    @Test
+    fun `names the mail quota rather than blaming the attempt`() {
+        // Supabase counts sign-up confirmations and reset links against one
+        // small hourly quota; "too many attempts" blames somebody for typing
+        // their password once.
+        val message = authErrorMessage("email rate limit exceeded")
+        assertTrue(message, message.contains("e-poçt limiti"))
+        assertFalse(message, message.contains("cəhd oldu"))
+    }
+
+    @Test
+    fun `passes on how long the server said to wait`() {
+        assertTrue(
+            authErrorMessage(
+                "For security purposes, you can only request this after 47 seconds.",
+            ).contains("47 saniyə"),
+        )
+    }
+}
+
+class SpentLinkTest {
+
+    @Test
+    fun `says a link no longer works, rather than passing on a JWT complaint`() {
+        // What the server says is "invalid number of segments"; what happened
+        // is that the link was already used or has expired.
+        assertTrue(
+            authErrorMessage("invalid JWT: unable to parse or verify signature")
+                .contains("Link vaxtı keçib"),
         )
     }
 }

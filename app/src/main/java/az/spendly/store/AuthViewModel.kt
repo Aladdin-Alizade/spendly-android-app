@@ -26,7 +26,19 @@ import kotlinx.coroutines.withContext
  * There is no loading state: the stored session is read from local storage,
  * so who is signed in is known before the first frame.
  */
-enum class AuthStatus { SIGNED_OUT, SIGNED_IN, NOT_REQUIRED }
+enum class AuthStatus {
+    SIGNED_OUT,
+    SIGNED_IN,
+
+    /**
+     * A reset link opened the app and signed it in. It is a session like any
+     * other, so nothing distinguishes it except this — and without it somebody
+     * who followed a link out of their mailbox lands on the dashboard with the
+     * password they came to set still unset.
+     */
+    RECOVERING,
+    NOT_REQUIRED,
+}
 
 data class AuthState(
     val status: AuthStatus,
@@ -89,8 +101,45 @@ class AuthViewModel(private val session: SupabaseSession?) : ViewModel() {
         )
     }
 
-    fun dismissNotice() {
-        _state.value = _state.value.copy(notice = null)
+    /** Forget what the last attempt said. One screen's message must not read
+     *  as another screen's answer. */
+    fun clearMessages() {
+        _state.value = _state.value.copy(notice = null, failure = null)
+    }
+
+    /**
+     * Email a reset link. Reported as sent whether or not the address has an
+     * account, because saying which addresses exist is telling.
+     */
+    fun sendPasswordReset(email: String) = attempt {
+        session!!.sendPasswordReset(email)
+        _state.value = AuthState(
+            AuthStatus.SIGNED_OUT,
+            notice = "Əgər bu ünvanla hesab varsa, link göndərildi. Poçtunuzu yoxlayın.",
+        )
+    }
+
+    /** A reset link came back to the app; adopt the session it carried. */
+    fun startRecovery(accessToken: String, refreshToken: String?) {
+        val current = session ?: return
+        _state.value = _state.value.copy(busy = true, failure = null, notice = null)
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) { current.adoptRecovery(accessToken, refreshToken) }
+                _state.value = AuthState(AuthStatus.RECOVERING, user = current.account)
+            } catch (cause: Exception) {
+                _state.value = AuthState(
+                    AuthStatus.SIGNED_OUT,
+                    failure = authErrorMessage(cause.message ?: "Naməlum xəta"),
+                )
+            }
+        }
+    }
+
+    /** Set the password the reset link was opened to set. */
+    fun completePasswordReset(nextPassword: String) = attempt {
+        session!!.setPassword(nextPassword)
+        _state.value = AuthState(AuthStatus.SIGNED_IN, user = session.account)
     }
 
     fun signOut() {
