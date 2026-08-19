@@ -1,3 +1,11 @@
 sdk.dir=/PATH/TO/Android/sdk
 SUPABASE_URL=
 SUPABASE_PUBLISHABLE_KEY=
+
+# Release signing (optional). Create the key yourself, then fill these in:
+#   keytool -genkeypair -v -keystore ~/spendly-release.jks \
+#     -alias spendly -keyalg RSA -keysize 2048 -validity 10000
+KEYSTORE_FILE=
+KEYSTORE_PASSWORD=
+KEY_ALIAS=
+KEY_PASSWORD=

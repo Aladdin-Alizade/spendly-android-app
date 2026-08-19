@@ -17,6 +17,17 @@ val localProperties = Properties().apply {
     if (file.exists()) file.inputStream().use { load(it) }
 }
 
+/**
+ * Release signing, when a key exists.
+ *
+ * The keystore and its passwords live in local.properties, which is not in
+ * version control — a signing key in a repository is a signing key anyone can
+ * use to publish something that claims to be this app. With no key configured
+ * the release build still runs and produces an unsigned APK, so a checkout
+ * that has never been signed is not a broken checkout.
+ */
+val keystorePath: String? = localProperties.getProperty("KEYSTORE_FILE")?.takeIf { it.isNotBlank() }
+
 android {
     namespace = "az.spendly"
     compileSdk = 36
@@ -40,8 +51,22 @@ android {
         )
     }
 
+    signingConfigs {
+        if (keystorePath != null) {
+            create("release") {
+                storeFile = file(keystorePath)
+                storePassword = localProperties.getProperty("KEYSTORE_PASSWORD")
+                keyAlias = localProperties.getProperty("KEY_ALIAS")
+                keyPassword = localProperties.getProperty("KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            if (keystorePath != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

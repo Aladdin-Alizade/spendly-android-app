@@ -38,13 +38,54 @@ Install it on a connected device or a running emulator:
 ./gradlew installDebug
 ```
 
-`local.properties` holds the machine-specific settings — the SDK path, and the
-Supabase project if you have one. It is not in version control; copy
-`local.properties.example` and fill it in.
+`local.properties` holds the machine-specific settings — the SDK path, the
+Supabase project if you have one, and the release signing key. It is not in
+version control; copy `local.properties.example` and fill it in.
 
 **`gradle.properties` pins `org.gradle.java.home` to a JDK 21.** That is
 because this machine's default `JAVA_HOME` is a Java version the Android
 plugin does not accept yet. On any other machine, delete that line.
+
+### Putting it on a phone
+
+**Over USB.** Turn on Developer options and USB debugging on the phone, plug it
+in, and:
+
+```bash
+./gradlew installDebug
+```
+
+**As a file you send yourself.** `assembleDebug` leaves an installable APK at
+`app/build/outputs/apk/debug/app-debug.apk` — AirDrop it, or send it over
+Telegram, Drive or email, and open it on the phone. Android will ask once for
+permission to install from that app; that prompt is expected for anything not
+coming from the Play Store.
+
+A debug APK is signed with the throwaway debug key. That is fine for your own
+phone, but it cannot be upgraded in place by a release build later, and Android
+marks it debuggable. For something you intend to keep, sign it properly:
+
+```bash
+keytool -genkeypair -v -keystore ~/spendly-release.jks -alias spendly -keyalg RSA -keysize 2048 -validity 10000
+```
+
+Put the path and the passwords you chose into `local.properties`
+(`KEYSTORE_FILE`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`), then:
+
+```bash
+./gradlew assembleRelease
+```
+
+That writes `app/build/outputs/apk/release/app-release.apk` — about a third
+smaller than the debug build. **Keep the keystore file and its passwords.**
+Losing them means the next version cannot be installed over this one; the only
+way back is uninstalling the app, which takes its local data with it. Data in a
+Supabase account survives, because it belongs to the account rather than to the
+install.
+
+Without a key configured the release build still runs and produces
+`app-release-unsigned.apk`, which Android will refuse to install — signing is
+what makes it installable, not an optional polish step.
 
 ### Tests
 
