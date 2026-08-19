@@ -5,8 +5,10 @@ package az.spendly
 
 import az.spendly.domain.AuthMode
 import az.spendly.domain.MIN_PASSWORD_LENGTH
+import az.spendly.domain.PasswordChangeInput
 import az.spendly.domain.authErrorMessage
 import az.spendly.domain.validateCredentials
+import az.spendly.domain.validatePasswordChange
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -63,5 +65,51 @@ class AuthErrorMessageTest {
     @Test
     fun `passes an unrecognised message through rather than hiding it`() {
         assertEquals("some unmapped failure", authErrorMessage("some unmapped failure"))
+    }
+}
+
+class PasswordChangeTest {
+
+    private val valid = PasswordChangeInput(
+        current = "old-one",
+        next = "brand-new",
+        repeat = "brand-new",
+    )
+
+    @Test
+    fun `accepts a well-formed change`() {
+        assertFalse(validatePasswordChange(valid).any)
+    }
+
+    @Test
+    fun `asks for the current password rather than trusting the session`() {
+        // An unattended phone has a session too; a session alone should not be
+        // enough to lock somebody out of their own account.
+        assertNotNull(validatePasswordChange(valid.copy(current = "")).current)
+    }
+
+    @Test
+    fun `holds the new password to the same length rule as sign-up`() {
+        val short = "x".repeat(MIN_PASSWORD_LENGTH - 1)
+        assertNotNull(validatePasswordChange(valid.copy(next = short, repeat = short)).next)
+    }
+
+    @Test
+    fun `rejects a new password identical to the old one`() {
+        val same = PasswordChangeInput("same-one", "same-one", "same-one")
+        assertNotNull(validatePasswordChange(same).next)
+    }
+
+    @Test
+    fun `catches a mistyped repeat`() {
+        assertNotNull(validatePasswordChange(valid.copy(repeat = "brand-neW")).repeat)
+    }
+
+    @Test
+    fun `translates the refusal Supabase sends for an unchanged password`() {
+        assertTrue(
+            authErrorMessage("New password should be different from the old password.")
+                .contains("fərqli olmalıdır"),
+        )
     }
 }

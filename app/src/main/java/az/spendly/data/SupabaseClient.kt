@@ -174,6 +174,39 @@ class SupabaseSession(context: Context) {
         )
     }
 
+    /**
+     * Change the password of the account that is signed in.
+     *
+     * The current password is checked by signing in with it first. Supabase
+     * would accept the change on the strength of the session alone, but a
+     * session is something an unattended phone has too — and the cost of
+     * asking is one field, against somebody being locked out of their own
+     * account.
+     */
+    fun changePassword(currentPassword: String, nextPassword: String) {
+        val address = email ?: throw SupabaseException("Hesaba daxil olunmayıb")
+
+        // Wrong current password fails here, before anything is changed. The
+        // address is not in question during a change, so the sign-in wording
+        // would name the wrong field.
+        try {
+            signIn(address, currentPassword)
+        } catch (cause: SupabaseOfflineException) {
+            throw cause
+        } catch (cause: SupabaseException) {
+            val refused = cause.message.orEmpty().contains("invalid login", ignoreCase = true)
+            throw if (refused) SupabaseException("Cari şifrə yanlışdır") else cause
+        }
+
+        val payload = put(
+            "${SupabaseConfig.url}/auth/v1/user",
+            buildJsonObject { put("password", nextPassword) },
+        )
+        // The response carries the user; the tokens stay as the sign-in left
+        // them, so the session survives its own password change.
+        payload["id"]?.jsonPrimitive?.contentOrNull()?.let { userId = it }
+    }
+
     fun signOut() {
         val token = accessToken
         if (token != null) {
@@ -231,15 +264,24 @@ class SupabaseSession(context: Context) {
         return access
     }
 
-    private fun post(url: String, body: JsonObject): JsonObject {
-        val request = Request.Builder()
+    private fun put(url: String, body: JsonObject): JsonObject =
+        send("PUT", url, body)
+
+    private fun post(url: String, body: JsonObject): JsonObject = send("POST", url, body)
+
+    private fun send(method: String, url: String, body: JsonObject): JsonObject {
+        val payload = supabaseJson.encodeToString(JsonObject.serializer(), body)
+            .toRequestBody(JSON_MEDIA)
+        val builder = Request.Builder()
             .url(url)
             .addHeader("apikey", SupabaseConfig.key)
             .addHeader("Content-Type", "application/json")
-            .post(supabaseJson.encodeToString(JsonObject.serializer(), body).toRequestBody(JSON_MEDIA))
-            .build()
+            .method(method, payload)
 
-        val text = execute(request)
+        // Only the endpoints that act on an existing account need the session.
+        accessToken?.let { builder.addHeader("Authorization", "Bearer $it") }
+
+        val text = execute(builder.build())
         return runCatching { supabaseJson.parseToJsonElement(text).jsonObject }
             .getOrElse { throw SupabaseException("Supabase cavabı oxunmadı") }
     }

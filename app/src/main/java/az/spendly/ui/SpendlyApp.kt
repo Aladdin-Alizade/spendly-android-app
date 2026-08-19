@@ -82,6 +82,11 @@ fun SpendlyApp(
     viewModel: FinanceViewModel,
     /** Who is signed in, for the profile. Null in local-storage mode. */
     user: AccountUser? = null,
+    /** Null in local-storage mode, where there is no password to change. */
+    onChangePassword: ((String, String) -> Unit)? = null,
+    passwordNotice: String? = null,
+    passwordFailure: String? = null,
+    passwordBusy: Boolean = false,
     /** Null in local-storage mode, where there is nobody signed in. */
     onSignOut: (() -> Unit)? = null,
 ) {
@@ -220,6 +225,10 @@ fun SpendlyApp(
             user = user,
             sync = state.sync,
             onSync = viewModel::syncNow,
+            onChangePassword = onChangePassword,
+            passwordNotice = passwordNotice,
+            passwordFailure = passwordFailure,
+            busy = passwordBusy,
             onSignOut = onSignOut,
             onDismiss = { profileOpen = false },
         )

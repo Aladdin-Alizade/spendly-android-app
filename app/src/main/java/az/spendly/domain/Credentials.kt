@@ -45,6 +45,44 @@ fun validateCredentials(email: String, password: String, mode: AuthMode): Creden
     return CredentialErrors(emailError, passwordError)
 }
 
+data class PasswordChangeInput(
+    val current: String = "",
+    val next: String = "",
+    val repeat: String = "",
+)
+
+data class PasswordChangeErrors(
+    val current: String? = null,
+    val next: String? = null,
+    val repeat: String? = null,
+) {
+    val any: Boolean get() = current != null || next != null || repeat != null
+}
+
+/**
+ * Changing a password, checked as far as it can be without the server.
+ *
+ * The current password is asked for rather than taken on trust from the open
+ * session: an unattended phone is the ordinary case, and a session alone
+ * should not be enough to lock its owner out of their own account. The server
+ * is what actually verifies it — this only catches the empty field.
+ */
+fun validatePasswordChange(input: PasswordChangeInput): PasswordChangeErrors {
+    val current = if (input.current.isEmpty()) "Cari şifrəni daxil edin" else null
+
+    val next = when {
+        input.next.isEmpty() -> "Yeni şifrəni daxil edin"
+        input.next.length < MIN_PASSWORD_LENGTH ->
+            "Yeni şifrə ən azı $MIN_PASSWORD_LENGTH simvol olmalıdır"
+        input.next == input.current -> "Yeni şifrə köhnəsindən fərqli olmalıdır"
+        else -> null
+    }
+
+    val repeat = if (input.repeat != input.next) "Şifrələr uyğun gəlmir" else null
+
+    return PasswordChangeErrors(current, next, repeat)
+}
+
 /**
  * Supabase's auth errors, in the user's language. Anything unrecognised is
  * passed through rather than replaced with a vague sentence.
@@ -58,6 +96,8 @@ fun authErrorMessage(message: String): String = when {
         "E-poçt ünvanı təsdiqlənməyib. Gələn məktubdakı linki açın."
     contains(message, "password should be at least") ->
         "Şifrə ən azı $MIN_PASSWORD_LENGTH simvol olmalıdır"
+    contains(message, "new password should be different", "same as the old password") ->
+        "Yeni şifrə köhnəsindən fərqli olmalıdır"
     contains(message, "rate limit", "too many requests") ->
         "Çox sayda cəhd oldu. Bir az gözləyin."
     contains(message, "signups not allowed", "signup is disabled") ->

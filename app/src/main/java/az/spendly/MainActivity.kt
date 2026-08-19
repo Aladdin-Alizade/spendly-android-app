@@ -74,6 +74,14 @@ private fun Root() {
                 state = state,
                 viewModel = finance,
                 user = authState.user,
+                onChangePassword = if (authState.status == AuthStatus.SIGNED_IN) {
+                    auth::changePassword
+                } else {
+                    null
+                },
+                passwordNotice = authState.notice,
+                passwordFailure = authState.failure,
+                passwordBusy = authState.busy,
                 // Present only when there is an account to leave; in local
                 // storage mode there is nobody signed in.
                 onSignOut = if (authState.status == AuthStatus.SIGNED_IN) {

@@ -77,7 +77,10 @@ fun DialogShell(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 420.dp)
+                    // Tall enough that a form with three fields is not read
+                    // through a slot; still bounded, so a long list scrolls
+                    // inside the dialog rather than pushing the actions off.
+                    .heightIn(max = 520.dp)
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {

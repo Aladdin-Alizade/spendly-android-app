@@ -76,6 +76,23 @@ class AuthViewModel(private val session: SupabaseSession?) : ViewModel() {
         }
     }
 
+    /**
+     * Change the password. Reports through [AuthState.notice] on success and
+     * [AuthState.failure] on refusal, so the screen needs no state of its own.
+     */
+    fun changePassword(currentPassword: String, nextPassword: String) = attempt {
+        session!!.changePassword(currentPassword, nextPassword)
+        _state.value = AuthState(
+            AuthStatus.SIGNED_IN,
+            user = session.account,
+            notice = "Şifrə dəyişdirildi.",
+        )
+    }
+
+    fun dismissNotice() {
+        _state.value = _state.value.copy(notice = null)
+    }
+
     fun signOut() {
         val current = session ?: return
         viewModelScope.launch {

@@ -14,11 +14,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,11 +31,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import az.spendly.data.AccountUser
 import az.spendly.data.SyncState
 import az.spendly.data.SyncStatus
 import az.spendly.domain.FinanceData
+import az.spendly.domain.MIN_PASSWORD_LENGTH
+import az.spendly.domain.PasswordChangeErrors
+import az.spendly.domain.PasswordChangeInput
+import az.spendly.domain.validatePasswordChange
 import az.spendly.domain.TransactionType
 import az.spendly.domain.categoriesOfType
 import az.spendly.domain.formatAZN
@@ -58,6 +67,12 @@ fun ProfileDialog(
     user: AccountUser?,
     sync: SyncState,
     onSync: () -> Unit,
+    /** Null in local-storage mode, where there is no password to change. */
+    onChangePassword: ((String, String) -> Unit)?,
+    /** What the last attempt said: a confirmation, or why it was refused. */
+    passwordNotice: String? = null,
+    passwordFailure: String? = null,
+    busy: Boolean = false,
     onSignOut: (() -> Unit)?,
     onDismiss: () -> Unit,
 ) {
@@ -192,6 +207,15 @@ fun ProfileDialog(
             }
         }
 
+        if (onChangePassword != null) {
+            PasswordChange(
+                onSubmit = onChangePassword,
+                notice = passwordNotice,
+                failure = passwordFailure,
+                busy = busy,
+            )
+        }
+
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Stat("Əməliyyat", data.transactions.size.toString(), Modifier.weight(1f))
             Stat("Xərc / gəlir", "$expenses / $income", Modifier.weight(1f))
@@ -219,6 +243,162 @@ fun ProfileDialog(
                     "${categoriesOfType(data, TransactionType.INCOME).size} gəlir kateqoriyası",
                 style = MaterialTheme.typography.bodySmall,
                 color = colors.textFaint,
+            )
+        }
+    }
+}
+
+/**
+ * Changing the password, without leaving the account screen.
+ *
+ * Closed by default: it is a thing you occasionally need, not a thing you came
+ * here to look at, and three password fields sitting open in a dialog about an
+ * account read as though something were wrong with it.
+ */
+@Composable
+private fun PasswordChange(
+    onSubmit: (String, String) -> Unit,
+    notice: String?,
+    failure: String?,
+    busy: Boolean,
+) {
+    val colors = spendlyColors
+    var open by remember { mutableStateOf(false) }
+    var input by remember { mutableStateOf(PasswordChangeInput()) }
+    var showErrors by remember { mutableStateOf(false) }
+
+    val errors = validatePasswordChange(input)
+    val visible = if (showErrors) errors else PasswordChangeErrors()
+
+    // A confirmation from the store means the change went through; the form
+    // has nothing left to show.
+    LaunchedEffect(notice) {
+        if (notice != null) {
+            open = false
+            input = PasswordChangeInput()
+            showErrors = false
+        }
+    }
+
+    if (!open) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(Radius.sm))
+                .background(colors.surfaceInset)
+                .padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Micro("Şifrə")
+                Text(
+                    text = notice ?: "Hesabınızın şifrəsini dəyişin",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (notice != null) colors.positive else colors.textMuted,
+                )
+            }
+            TextButton(onClick = { open = true }) { Text("Dəyiş") }
+        }
+        return
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Radius.sm))
+            .background(colors.surfaceInset)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Micro("Şifrəni dəyiş")
+
+        PasswordField(
+            label = "Cari şifrə",
+            value = input.current,
+            onValueChange = { input = input.copy(current = it) },
+            error = visible.current,
+        )
+        PasswordField(
+            label = "Yeni şifrə",
+            value = input.next,
+            onValueChange = { input = input.copy(next = it) },
+            error = visible.next,
+            hint = "Ən azı $MIN_PASSWORD_LENGTH simvol.",
+        )
+        PasswordField(
+            label = "Yeni şifrə (təkrar)",
+            value = input.repeat,
+            onValueChange = { input = input.copy(repeat = it) },
+            error = visible.repeat,
+        )
+
+        if (failure != null) {
+            Text(
+                text = failure,
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.negative,
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+        ) {
+            TextButton(
+                onClick = {
+                    open = false
+                    showErrors = false
+                },
+            ) { Text("Ləğv et") }
+            Button(
+                enabled = !busy,
+                onClick = {
+                    if (errors.any) {
+                        showErrors = true
+                    } else {
+                        onSubmit(input.current, input.next)
+                    }
+                },
+            ) { Text(if (busy) "Gözləyin…" else "Şifrəni dəyiş") }
+        }
+    }
+}
+
+@Composable
+private fun PasswordField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    error: String?,
+    hint: String? = null,
+) {
+    val colors = spendlyColors
+    Column {
+        Micro(label)
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp),
+            singleLine = true,
+            isError = error != null,
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+        )
+        when {
+            error != null -> Text(
+                text = error,
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.negative,
+                modifier = Modifier.padding(top = 3.dp),
+            )
+
+            hint != null -> Text(
+                text = hint,
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textFaint,
+                modifier = Modifier.padding(top = 3.dp),
             )
         }
     }
