@@ -41,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import az.spendly.data.AccountUser
 import az.spendly.data.setupHint
 import az.spendly.domain.MonthKey
 import az.spendly.domain.Transaction
@@ -53,7 +54,9 @@ import az.spendly.domain.today
 import az.spendly.store.FinanceState
 import az.spendly.store.FinanceViewModel
 import az.spendly.store.LoadStatus
+import az.spendly.ui.dialogs.ProfileDialog
 import az.spendly.ui.dialogs.TransactionDialog
+import az.spendly.ui.screens.AdviceScreen
 import az.spendly.ui.screens.BudgetScreen
 import az.spendly.ui.screens.DashboardScreen
 import az.spendly.ui.screens.TransactionsScreen
@@ -62,7 +65,8 @@ import az.spendly.ui.theme.spendlyColors
 
 private enum class Screen(val label: String) {
     DASHBOARD("İcmal"),
-    TRANSACTIONS("Əməliyyatlar"),
+    TRANSACTIONS("Əməliyyat"),
+    ADVICE("Məsləhət"),
     BUDGET("Büdcə"),
 }
 
@@ -70,6 +74,8 @@ private enum class Screen(val label: String) {
 fun SpendlyApp(
     state: FinanceState,
     viewModel: FinanceViewModel,
+    /** Who is signed in, for the profile. Null in local-storage mode. */
+    user: AccountUser? = null,
     /** Null in local-storage mode, where there is nobody signed in. */
     onSignOut: (() -> Unit)? = null,
 ) {
@@ -85,6 +91,7 @@ fun SpendlyApp(
     /** null = closed, a transaction = editing it, NEW_TRANSACTION = adding. */
     var editing by remember { mutableStateOf<Transaction?>(null) }
     var adding by remember { mutableStateOf(false) }
+    var profileOpen by remember { mutableStateOf(false) }
 
     val months = knownMonths(state.data, currentMonth())
 
@@ -99,7 +106,7 @@ fun SpendlyApp(
                     month = month,
                     months = months,
                     onMonthChange = { month = it },
-                    onSignOut = onSignOut,
+                    onProfile = { profileOpen = true },
                 )
                 if (state.saveError != null) {
                     SaveBanner(
@@ -168,6 +175,8 @@ fun SpendlyApp(
                     onAdd = { adding = true },
                 )
 
+                Screen.ADVICE -> AdviceScreen(data = state.data, month = month)
+
                 Screen.BUDGET -> BudgetScreen(
                     data = state.data,
                     month = month,
@@ -183,6 +192,15 @@ fun SpendlyApp(
                 )
             }
         }
+    }
+
+    if (profileOpen) {
+        ProfileDialog(
+            data = state.data,
+            user = user,
+            onSignOut = onSignOut,
+            onDismiss = { profileOpen = false },
+        )
     }
 
     if (adding || editing != null) {
@@ -222,7 +240,7 @@ private fun TopBar(
     month: MonthKey,
     months: List<MonthKey>,
     onMonthChange: (MonthKey) -> Unit,
-    onSignOut: (() -> Unit)?,
+    onProfile: () -> Unit,
 ) {
     val colors = spendlyColors
     // The selected month is always present, and one month either side is
@@ -264,15 +282,6 @@ private fun TopBar(
                 style = MaterialTheme.typography.titleMedium,
                 color = colors.text,
             )
-            if (onSignOut != null) {
-                TextButton(onClick = onSignOut) {
-                    Text(
-                        text = "Çıxış",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.textMuted,
-                    )
-                }
-            }
         }
 
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -301,6 +310,24 @@ private fun TopBar(
                 }
             }
             Chevron("›") { onMonthChange(shiftMonth(month, 1)) }
+
+            // The account lives behind this: who is signed in, what the
+            // account holds, and the way out.
+            Box(
+                modifier = Modifier
+                    .padding(start = 4.dp)
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(colors.surfaceSunken)
+                    .clickable(onClick = onProfile),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "☰",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.textMuted,
+                )
+            }
         }
     }
 }

@@ -73,6 +73,7 @@ private fun Root() {
             SpendlyApp(
                 state = state,
                 viewModel = finance,
+                user = authState.user,
                 // Present only when there is an account to leave; in local
                 // storage mode there is nobody signed in.
                 onSignOut = if (authState.status == AuthStatus.SIGNED_IN) {

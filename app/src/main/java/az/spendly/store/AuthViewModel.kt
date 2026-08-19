@@ -11,6 +11,7 @@ import android.app.Application
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import az.spendly.data.AccountUser
 import az.spendly.data.SupabaseConfig
 import az.spendly.data.SupabaseSession
 import az.spendly.domain.authErrorMessage
@@ -29,14 +30,17 @@ enum class AuthStatus { SIGNED_OUT, SIGNED_IN, NOT_REQUIRED }
 
 data class AuthState(
     val status: AuthStatus,
-    /** The signed-in user's id. Data is reloaded when this changes. */
-    val userId: String? = null,
+    /** Who is signed in, for the profile. Null in local-storage mode. */
+    val user: AccountUser? = null,
     /** Set after a sign-up that needs the address confirmed before signing in. */
     val notice: String? = null,
     /** Set when the last attempt failed, in the user's own language. */
     val failure: String? = null,
     val busy: Boolean = false,
-)
+) {
+    /** The id the store is keyed by, so a different account builds a new one. */
+    val userId: String? get() = user?.id
+}
 
 class AuthViewModel(private val session: SupabaseSession?) : ViewModel() {
 
@@ -44,7 +48,7 @@ class AuthViewModel(private val session: SupabaseSession?) : ViewModel() {
         if (session == null) {
             AuthState(AuthStatus.NOT_REQUIRED)
         } else if (session.isSignedIn) {
-            AuthState(AuthStatus.SIGNED_IN, userId = session.userId)
+            AuthState(AuthStatus.SIGNED_IN, user = session.account)
         } else {
             AuthState(AuthStatus.SIGNED_OUT)
         },
@@ -53,7 +57,7 @@ class AuthViewModel(private val session: SupabaseSession?) : ViewModel() {
 
     fun signIn(email: String, password: String) = attempt {
         session!!.signIn(email.trim(), password)
-        _state.value = AuthState(AuthStatus.SIGNED_IN, userId = session.userId)
+        _state.value = AuthState(AuthStatus.SIGNED_IN, user = session.account)
     }
 
     fun signUp(email: String, password: String) = attempt {
@@ -62,7 +66,7 @@ class AuthViewModel(private val session: SupabaseSession?) : ViewModel() {
         // empty screen.
         val signedIn = session!!.signUp(email.trim(), password)
         _state.value = if (signedIn) {
-            AuthState(AuthStatus.SIGNED_IN, userId = session.userId)
+            AuthState(AuthStatus.SIGNED_IN, user = session.account)
         } else {
             AuthState(
                 AuthStatus.SIGNED_OUT,

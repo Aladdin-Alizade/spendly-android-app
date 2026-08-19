@@ -34,6 +34,14 @@ import okhttp3.Response
  *  failures name the step that fixes them. */
 class SupabaseException(message: String) : IOException(message)
 
+/** What the app shows about the person signed in. Nothing else is read. */
+data class AccountUser(
+    val id: String,
+    val email: String?,
+    /** ISO timestamp the account was created. */
+    val createdAt: String?,
+)
+
 object SupabaseConfig {
     val url: String = BuildConfig.SUPABASE_URL.trim().trimEnd('/')
     val key: String = BuildConfig.SUPABASE_PUBLISHABLE_KEY.trim()
@@ -80,6 +88,13 @@ class SupabaseSession(context: Context) {
     /** The signed-in user's id, or null when nobody is signed in. */
     var userId: String? = preferences.getString(KEY_USER, null)
         private set
+
+    private var email: String? = preferences.getString(KEY_EMAIL, null)
+    private var createdAt: String? = preferences.getString(KEY_CREATED, null)
+
+    /** Who is signed in, for the profile. Null when nobody is. */
+    val account: AccountUser?
+        get() = userId?.let { AccountUser(it, email, createdAt) }
 
     /** True when a stored session can still be used or refreshed. */
     val isSignedIn: Boolean get() = userId != null && (accessToken != null || refreshToken != null)
@@ -168,6 +183,8 @@ class SupabaseSession(context: Context) {
         refreshToken = null
         expiresAt = 0
         userId = null
+        email = null
+        createdAt = null
         preferences.edit().clear().apply()
     }
 
@@ -177,19 +194,23 @@ class SupabaseSession(context: Context) {
         val refresh = payload["refresh_token"]?.jsonPrimitive?.contentOrNull()
         val expiresIn = payload["expires_in"]?.jsonPrimitive?.contentOrNull()?.toLongOrNull()
             ?: 3600L
-        val user = payload["user"]?.jsonObject?.get("id")?.jsonPrimitive?.contentOrNull()
-            ?: payload["id"]?.jsonPrimitive?.contentOrNull()
+        val user = payload["user"]?.jsonObject ?: payload
+        val id = user["id"]?.jsonPrimitive?.contentOrNull()
 
         accessToken = access
         refreshToken = refresh
         expiresAt = System.currentTimeMillis() / 1000 + expiresIn
-        if (user != null) userId = user
+        if (id != null) userId = id
+        user["email"]?.jsonPrimitive?.contentOrNull()?.let { email = it }
+        user["created_at"]?.jsonPrimitive?.contentOrNull()?.let { createdAt = it }
 
         preferences.edit()
             .putString(KEY_ACCESS, access)
             .putString(KEY_REFRESH, refresh)
             .putLong(KEY_EXPIRES, expiresAt)
             .putString(KEY_USER, userId)
+            .putString(KEY_EMAIL, email)
+            .putString(KEY_CREATED, createdAt)
             .apply()
 
         return access
@@ -221,6 +242,8 @@ class SupabaseSession(context: Context) {
         const val KEY_REFRESH = "refresh_token"
         const val KEY_EXPIRES = "expires_at"
         const val KEY_USER = "user_id"
+        const val KEY_EMAIL = "user_email"
+        const val KEY_CREATED = "user_created_at"
     }
 }
 

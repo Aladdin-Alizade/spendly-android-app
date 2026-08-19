@@ -52,12 +52,13 @@ plugin does not accept yet. On any other machine, delete that line.
 ./gradlew test
 ```
 
-129 unit tests over the calculation, analytics, category and validation rules —
-the web app's suite, carried across. They need no device and no emulator.
+162 unit tests over the calculation, analytics, advice, category and validation
+rules — the web app's suite, carried across. They need no device and no
+emulator.
 
 ---
 
-## The three screens
+## The four screens
 
 The month you are looking at is set in the header, and applies everywhere.
 
@@ -88,6 +89,30 @@ nothing in it shows a short page instead of a wall of zeroes.
 Almost everything is tappable. Tap a category, a day or a bar and you get the
 transactions behind it.
 
+### Məsləhətlər — what the figures say
+
+Fourteen rules over the month's own numbers, each of which either fires or does
+not. No model is involved and nothing is generated: the same figures always
+produce the same page.
+
+Three kinds of statement are kept apart. A **fact** is arithmetic on your
+numbers. A **suggestion** is phrased as something worth looking at. A
+**framework** is named and sourced where it is used. A rule the data cannot
+support stays silent and says what it was missing, rather than lowering its own
+standard to fill a slot.
+
+The findings are bucketed into *Diqqət tələb edir*, *Yaxşı gedir* and *Nəzərdən
+keçirməyə dəyər*, three each, ranked by the manat at stake rather than by
+percentage — a 40% overrun on 5 ₼ must not outrank 200 ₼. Only the largest
+finding per category is kept, so one category cannot fill a bucket.
+
+**Metodologiya** at the bottom lists every reference, its origin, and the date
+it was last verified. Guidance goes out of date and no offline app can know
+that; what it can do is refuse to present an unchecked reference as current.
+References older than a year are flagged on screen.
+
+This is not financial advice, and the app says so where it matters.
+
 ### Əməliyyatlar — transactions
 
 Everything recorded for the month, newest first. Filter to income or expenses
@@ -116,6 +141,7 @@ very bottom.
 | Add or rename a category | **Büdcə** → **Kateqoriyalar** |
 | Wipe one month's plan | **Büdcə** → **Silmə** → **Planı sil** → **Təsdiqlə** |
 | Wipe everything | **Büdcə** → **Silmə** → **Bütün məlumatları sil** |
+| See the account, or sign out | The round button at the top right |
 
 Every destructive action needs a second tap to confirm.
 
@@ -155,6 +181,11 @@ With a project configured, the app opens on a sign-in screen. Your data belongs
 to that account, so the same figures are there from any device that signs in.
 It is the same account the web app uses.
 
+The profile — the round button at the top right — shows who is signed in, when
+the account was created, what it holds, and the way out. It also shows the user
+id, and lets you copy it: every row is scoped to that id, so anyone recovering
+records that belong to an older identity needs to be able to read their own.
+
 The publishable key is meant to ship inside an app; it is not what protects the
 data. Row level security is: every table is scoped to `auth.uid()`, so that key
 on its own reads nothing. Never put the `service_role` key in this file.
@@ -170,6 +201,7 @@ sign-ups switched off, session expired) the banner names the step.
 ```
 app/src/main/java/az/spendly/
   domain/      Every rule and every figure. Pure Kotlin, no Android imports.
+  domain/insights/  The advice engine, its thresholds and its references.
   data/        The persistence boundary: one interface, two implementations.
   store/       FinanceViewModel and AuthViewModel — the app's state.
   ui/          Compose: the theme, the three screens, the charts, the dialogs.
