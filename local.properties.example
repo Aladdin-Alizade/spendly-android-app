@@ -1,0 +1,3 @@
+sdk.dir=/PATH/TO/Android/sdk
+SUPABASE_URL=
+SUPABASE_PUBLISHABLE_KEY=

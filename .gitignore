@@ -1,0 +1,17 @@
+# Build output
+build/
+captures/
+.externalNativeBuild
+.cxx
+
+# Gradle
+.gradle/
+
+# Machine-specific setup: the SDK path and the Supabase project.
+local.properties
+
+# IDE
+.idea/
+*.iml
+
+.DS_Store
