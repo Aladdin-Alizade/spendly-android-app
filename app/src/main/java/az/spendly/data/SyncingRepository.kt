@@ -86,11 +86,19 @@ class SyncingRepository(
                     // that may not be the server's. Go the long way round.
                     reconcile(data)
                 }
-            } catch (offline: SupabaseOfflineException) {
-                _state.value = SyncState(SyncStatus.PENDING)
             } catch (cause: Exception) {
-                _state.value = SyncState(SyncStatus.FAILED, describeError(cause))
+                report(cause)
             }
+        }
+    }
+
+    /** A write that failed is queued work when the network is the reason and
+     *  a matter for a person when the server is. */
+    private fun report(cause: Exception) {
+        _state.value = if (cause is SupabaseOfflineException) {
+            SyncState(SyncStatus.PENDING)
+        } else {
+            SyncState(SyncStatus.FAILED, describeError(cause))
         }
     }
 
@@ -142,15 +150,15 @@ class SyncingRepository(
             synced.write(merged)
             _state.value = SyncState(SyncStatus.SYNCED)
             merged
-        } catch (offline: SupabaseOfflineException) {
-            // The read got through and the write did not; the merge is still
-            // the best copy this device has, so it is kept and queued.
-            working.write(merged)
-            _state.value = SyncState(SyncStatus.PENDING)
-            merged
         } catch (cause: Exception) {
-            _state.value = SyncState(SyncStatus.FAILED, describeError(cause))
-            null
+            // The read got through and the write did not. The merge is still
+            // the best copy this device has — it holds everything the server
+            // just handed over — so it is kept and the failure is reported
+            // against it. Throwing it away would leave the account looking
+            // empty on a device that had just been told otherwise.
+            working.write(merged)
+            report(cause)
+            merged
         }
     }
 }
