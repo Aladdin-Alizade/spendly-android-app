@@ -304,52 +304,45 @@ fun DashboardScreen(
         }
         }
 
-        /* --- what the plan has left ------------------------------------ */
+        /* --- what the plan has left ------------------------------------
+           With no plan there is no ring and no remainder, and the card that
+           stood here in its place held only the sentence saying so. Büdcə is a
+           tab away and says the same thing where it can be acted on. */
+        if (summary.plannedExpenses > 0) {
         item {
-            if (summary.plannedExpenses > 0) {
-                Panel(
-                    title = "Büdcə",
-                    note = "${((summary.expenses / summary.plannedExpenses) * 100).roundToInt()}% istifadə olunub",
+            Panel(
+                title = "Büdcə",
+                note = "${((summary.expenses / summary.plannedExpenses) * 100).roundToInt()}% istifadə olunub",
+            ) {
+                SpendRing(
+                    slices = ringSlices(spent, colorOf),
+                    spent = summary.expenses,
+                    planned = summary.plannedExpenses,
+                    onSelect = ::openCategory,
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    SpendRing(
-                        slices = ringSlices(spent, colorOf),
-                        spent = summary.expenses,
-                        planned = summary.plannedExpenses,
-                        onSelect = ::openCategory,
+                    Text(
+                        text = "planlaşdırılan ${formatAZN(summary.plannedExpenses)} məbləğdən",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textMuted,
+                        modifier = Modifier.weight(1f),
                     )
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        Text(
-                            text = "planlaşdırılan ${formatAZN(summary.plannedExpenses)} məbləğdən",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = colors.textMuted,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Text(
-                            text = "${formatSignedAZN(budgetLeft)} qalıq",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (budgetLeft < 0) colors.negative else colors.text,
-                            maxLines = 1,
-                            softWrap = false,
-                        )
-                    }
-                }
-            } else if (hasActivity) {
-                // Worth asking for a plan once there is spending to hold it
-                // against; on an empty month it is one more card saying no.
-                Panel(title = "Büdcə") {
-                    EmptyState(
-                        title = "Bu dövr üçün plan yoxdur",
-                        body = "Xərcləri planla müqayisə etmək üçün Büdcə səhifəsində " +
-                            "planlaşdırılan məbləğləri təyin edin.",
+                    Text(
+                        text = "${formatSignedAZN(budgetLeft)} qalıq",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (budgetLeft < 0) colors.negative else colors.text,
+                        maxLines = 1,
+                        softWrap = false,
                     )
                 }
             }
+        }
         }
 
         /* --- how money came and went -----------------------------------

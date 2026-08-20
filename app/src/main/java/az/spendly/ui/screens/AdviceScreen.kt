@@ -228,45 +228,53 @@ fun AdviceScreen(data: FinanceData, month: MonthKey, modifier: Modifier = Modifi
         }
 
         /* --- what the figures say, before the frameworks that need them --
-           With nothing to report this used to be four panels in a row that all
-           said nothing to report: one saying so, and one per bucket saying so
-           again in its own words. One says it now, and the empty buckets stay
-           away until there is something to put in them. */
-        if (nothing) {
-            item {
-                Panel(title = "Müşahidə yoxdur") {
-                    Text(
-                        text = "Bir neçə əməliyyat və bir plan kifayətdir — " +
-                            "rəqəmlər yığıldıqca bu səhifə doldurulacaq.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.textMuted,
-                    )
-                }
-            }
-        } else {
+           A bucket that found nothing is not a finding. All three used to
+           stand in a row whatever the month held, and an empty one filled its
+           card with a sentence saying it was empty — three ways of reporting
+           nothing, beside the one that had something. Each waits now until it
+           has something to list. */
+        if (report.attention.isNotEmpty()) {
             item {
                 Bucket(
                     title = "Diqqət tələb edir",
                     priority = AdvicePriority.ATTENTION,
                     items = report.attention,
-                    empty = "Diqqət tələb edən hal aşkarlanmadı.",
                 )
             }
+        }
+        if (report.good.isNotEmpty()) {
             item {
                 Bucket(
                     title = "Yaxşı gedir",
                     priority = AdvicePriority.GOOD,
                     items = report.good,
-                    empty = "Bu ay üçün müsbət müşahidə yoxdur.",
                 )
             }
+        }
+        if (report.review.isNotEmpty()) {
             item {
                 Bucket(
                     title = "Nəzərdən keçirməyə dəyər",
                     priority = AdvicePriority.REVIEW,
                     items = report.review,
-                    empty = "Nəzərdən keçirilməli hal yoxdur.",
                 )
+            }
+        }
+
+        /* That no rule fired is itself a result — but only where there were
+           figures to run them against. On an account holding nothing it is one
+           more card reporting nothing, and the list at the bottom already
+           names what is missing and why. */
+        if (nothing && (health.income > 0 || health.expenses > 0)) {
+            item {
+                Panel(title = "Müşahidə yoxdur") {
+                    Text(
+                        text = "Bu ayın rəqəmləri yoxlanıldı — qeyd etməyə " +
+                            "dəyər bir hal çıxmadı.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textMuted,
+                    )
+                }
             }
         }
 
@@ -758,7 +766,6 @@ private fun Bucket(
     title: String,
     priority: AdvicePriority,
     items: List<Advice>,
-    empty: String,
 ) {
     val colors = spendlyColors
     val accent = when (priority) {
@@ -767,16 +774,7 @@ private fun Bucket(
         AdvicePriority.REVIEW -> colors.series[3]
     }
 
-    Panel(title = title, note = items.size.takeIf { it > 0 }?.toString()) {
-        if (items.isEmpty()) {
-            Text(
-                text = empty,
-                style = MaterialTheme.typography.bodySmall,
-                color = colors.textFaint,
-            )
-            return@Panel
-        }
-
+    Panel(title = title, note = items.size.toString()) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             for (item in items) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
