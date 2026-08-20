@@ -248,7 +248,11 @@ fun DashboardScreen(
             }
         }
 
-        /* --- where I stand -------------------------------------------- */
+        /* --- where I stand --------------------------------------------
+           The balance is cumulative, so a quiet month still has one worth
+           showing. An account with no records at all does not: it would be a
+           zero over a flat line, which is a card that reports nothing. */
+        if (hasActivity || hasComparison || holdings != 0.0) {
         item {
             Panel(
                 title = "Balans",
@@ -298,6 +302,7 @@ fun DashboardScreen(
                 }
             }
         }
+        }
 
         /* --- what the plan has left ------------------------------------ */
         item {
@@ -334,7 +339,9 @@ fun DashboardScreen(
                         )
                     }
                 }
-            } else {
+            } else if (hasActivity) {
+                // Worth asking for a plan once there is spending to hold it
+                // against; on an empty month it is one more card saying no.
                 Panel(title = "Büdcə") {
                     EmptyState(
                         title = "Bu dövr üçün plan yoxdur",
@@ -345,7 +352,10 @@ fun DashboardScreen(
             }
         }
 
-        /* --- how money came and went ----------------------------------- */
+        /* --- how money came and went -----------------------------------
+           Two bars of nothing and a remainder of zero, when nothing came and
+           nothing went. */
+        if (summary.income > 0 || summary.expenses > 0) {
         item {
             Panel(title = "Pul dövriyyəsi") {
                 val peak = maxOf(summary.income, summary.expenses)
@@ -417,6 +427,7 @@ fun DashboardScreen(
                     )
                 }
             }
+        }
         }
 
         if (!hasActivity) {

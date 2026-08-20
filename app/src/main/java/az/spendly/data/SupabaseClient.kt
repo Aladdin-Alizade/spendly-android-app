@@ -30,9 +30,39 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 
-/** Raised with a message the setup hints can read, so a fresh project's
- *  failures name the step that fixes them. */
-open class SupabaseException(message: String) : IOException(message)
+/**
+ * Raised with a message the setup hints can read, so a fresh project's
+ * failures name the step that fixes them.
+ *
+ * [status] and [code] are kept because the sentence alone cannot be acted on:
+ * a rejected token and a missing table both arrive as prose, and only one of
+ * them is worth refreshing a session over.
+ */
+open class SupabaseException(
+    message: String,
+    /** HTTP status, or 0 when the request never got an answer. */
+    val status: Int = 0,
+    /** PostgREST's `code`, or GoTrue's `error`, when the body carried one. */
+    val code: String? = null,
+) : IOException(message)
+
+/**
+ * The token was refused for a reason that is about the token, not about the
+ * account: expired, or issued at a moment the server has not reached yet.
+ *
+ * The two are told apart because the answer differs. An expired token is
+ * replaced by refreshing it. One issued in the future cannot be — a newer
+ * token is issued even further ahead — so the only thing that helps is waiting
+ * for the clocks to meet.
+ */
+internal val SupabaseException.isTokenExpired: Boolean
+    get() = status == 401 ||
+        code == "PGRST301" ||
+        message.orEmpty().contains("jwt expired", ignoreCase = true)
+
+internal val SupabaseException.isClockSkew: Boolean
+    get() = code == "PGRST303" ||
+        message.orEmpty().contains("issued at future", ignoreCase = true)
 
 /**
  * The request never reached the server.
@@ -118,13 +148,19 @@ class SupabaseSession(context: Context) {
     /**
      * A valid access token. Refreshes an expired one; never signs anybody in,
      * because who is signed in is the app's decision, not the transport's.
+     *
+     * [force] refreshes whatever the stored expiry says. The expiry is
+     * computed from this device's clock, so a device whose clock is behind
+     * believes an expired token is still good — and then the only thing that
+     * knows better is the server refusing it. That refusal is what passes
+     * [force], and it is why a rejected call is not the end of a session.
      */
-    fun token(): String {
+    fun token(force: Boolean = false): String {
         val now = System.currentTimeMillis() / 1000
         val current = accessToken
 
         // A minute of slack, so a token does not expire mid-request.
-        if (current != null && expiresAt - 60 > now) return current
+        if (!force && current != null && expiresAt - 60 > now) return current
 
         val refresh = refreshToken
             ?: throw SupabaseException("Hesaba daxil olunmayıb")
@@ -142,10 +178,24 @@ class SupabaseSession(context: Context) {
             // the only identity their rows are scoped to.
             throw offline
         } catch (cause: SupabaseException) {
-            // A refresh token the server no longer accepts means the session
-            // is over; keeping it would retry the same failure forever.
+            /*
+             * Only a refusal ends a session. The endpoint answering 500, or
+             * rate-limiting, or being briefly unhappy is not the user being
+             * signed out — and clearing the session on any of those is how
+             * somebody who never logged out ends up at the sign-in screen.
+             */
+            val refused = cause.status == 400 || cause.status == 401 ||
+                cause.code?.contains("invalid_grant", ignoreCase = true) == true ||
+                cause.message.orEmpty().contains("refresh token", ignoreCase = true)
+
+            if (!refused) throw cause
+
             clear()
-            throw SupabaseException("Sessiya bitib. Yenidən daxil olun.")
+            throw SupabaseException(
+                "Sessiya bitib. Yenidən daxil olun.",
+                status = cause.status,
+                code = cause.code,
+            )
         }
     }
 
@@ -379,8 +429,7 @@ class SupabaseRest(private val session: SupabaseSession) {
         .build()
 
     fun select(table: String): JsonArray {
-        val request = authorised("${SupabaseConfig.url}/rest/v1/$table?select=*").get().build()
-        val text = execute(request)
+        val text = execute { authorised("${SupabaseConfig.url}/rest/v1/$table?select=*").get().build() }
         return runCatching { supabaseJson.parseToJsonElement(text) as JsonArray }
             .getOrElse { throw SupabaseException("$table: cavab oxunmadı") }
     }
@@ -394,34 +443,78 @@ class SupabaseRest(private val session: SupabaseSession) {
             if (onConflict != null) append("?on_conflict=$onConflict")
         }
         val body = supabaseJson.encodeToString(JsonArray.serializer(), JsonArray(rows))
-        val request = authorised(url)
-            .addHeader("Prefer", "resolution=merge-duplicates,return=minimal")
-            .post(body.toRequestBody(JSON_MEDIA))
-            .build()
-        execute(request)
+        execute {
+            authorised(url)
+                .addHeader("Prefer", "resolution=merge-duplicates,return=minimal")
+                .post(body.toRequestBody(JSON_MEDIA))
+                .build()
+        }
     }
 
     fun deleteIn(table: String, column: String, values: List<String>) {
         if (values.isEmpty()) return
         val list = values.joinToString(",") { "\"${it.replace("\"", "\\\"")}\"" }
         val url = "${SupabaseConfig.url}/rest/v1/$table?$column=in.(${encode(list)})"
-        val request = authorised(url)
-            .addHeader("Prefer", "return=minimal")
-            .delete()
-            .build()
-        execute(request)
+        execute {
+            authorised(url)
+                .addHeader("Prefer", "return=minimal")
+                .delete()
+                .build()
+        }
     }
 
-    private fun authorised(url: String): Request.Builder = Request.Builder()
-        .url(url)
-        .addHeader("apikey", SupabaseConfig.key)
-        .addHeader("Authorization", "Bearer ${session.token()}")
-        .addHeader("Content-Type", "application/json")
+    private fun authorised(url: String, force: Boolean = false): Request.Builder =
+        Request.Builder()
+            .url(url)
+            .addHeader("apikey", SupabaseConfig.key)
+            .addHeader("Authorization", "Bearer ${session.token(force)}")
+            .addHeader("Content-Type", "application/json")
 
-    private fun execute(request: Request): String = call(http, request)
+    /**
+     * One call, and a second one when the first was refused over the token.
+     *
+     * The request is built rather than passed in, because the retry needs a
+     * different Authorization header and a built request cannot be given one.
+     *
+     * Two refusals are handled, and they are not the same:
+     *
+     *  - **Expired.** The stored expiry is this device's arithmetic on this
+     *    device's clock; the server's answer is the only authority. So the
+     *    token is refreshed and the call goes again.
+     *  - **Issued in the future.** The clocks disagree the other way, and a
+     *    fresh token would be stamped even further ahead — refreshing makes it
+     *    worse. The only thing that helps is a moment's wait.
+     *
+     * Neither is somebody being signed out. Before this, both arrived at the
+     * user as "Sessiya bitib. Yenidən daxil olun." on a session nobody had
+     * ended, and signing in again fixed it only because it happened to mint a
+     * token while the clocks agreed.
+     */
+    private fun execute(build: (force: Boolean) -> Request): String {
+        return try {
+            call(http, build(false))
+        } catch (cause: SupabaseOfflineException) {
+            throw cause
+        } catch (cause: SupabaseException) {
+            when {
+                cause.isTokenExpired -> call(http, build(true))
+                cause.isClockSkew -> {
+                    Thread.sleep(CLOCK_SKEW_WAIT_MS)
+                    call(http, build(false))
+                }
+                else -> throw cause
+            }
+        }
+    }
 
     private fun encode(value: String): String =
         java.net.URLEncoder.encode(value, "UTF-8").replace("+", "%20")
+
+    private companion object {
+        /** Long enough for a second or two of drift between two servers, short
+         *  enough that a save still feels like a save. */
+        const val CLOCK_SKEW_WAIT_MS = 1500L
+    }
 }
 
 /**
@@ -438,9 +531,22 @@ private fun call(http: OkHttpClient, request: Request): String {
 
     response.use {
         val text = it.body?.string().orEmpty()
-        if (!it.isSuccessful) throw SupabaseException(describeHttpFailure(it, text))
+        if (!it.isSuccessful) {
+            throw SupabaseException(
+                message = describeHttpFailure(it, text),
+                status = it.code,
+                code = failureCode(text),
+            )
+        }
         return text
     }
+}
+
+/** PostgREST's `code`, or GoTrue's `error`, out of a failed body. */
+private fun failureCode(body: String): String? {
+    val parsed = runCatching { supabaseJson.parseToJsonElement(body).jsonObject }.getOrNull()
+    return parsed?.get("code")?.jsonPrimitive?.contentOrNull()
+        ?: parsed?.get("error")?.jsonPrimitive?.contentOrNull()
 }
 
 /**

@@ -11,6 +11,7 @@ package az.spendly
 import az.spendly.data.describeError
 import az.spendly.data.setupHint
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -38,6 +39,31 @@ class SetupHintTest {
     @Test
     fun `says to sign in again when the session has gone`() {
         assertTrue(setupHint("Hesaba daxil olunmayıb")!!.contains("Yenidən daxil olun"))
+        assertTrue(setupHint("Invalid Refresh Token: Already Used")!!.contains("Yenidən daxil olun"))
+    }
+
+    @Test
+    fun `does not call a clock disagreement an ended session`() {
+        // PGRST303 is the server saying the token is stamped ahead of its own
+        // clock. Nobody logged out, and signing in again mints a token stamped
+        // further ahead still — so the old advice was not just unhelpful, it
+        // was the one thing that could not work.
+        val hint = setupHint("PGRST303: JWT issued at future")
+        assertNotNull(hint)
+        assertTrue(hint!!.contains("saat"))
+        assertFalse(hint.contains("Yenidən daxil olun"))
+
+        assertEquals(hint, setupHint("JWT issued at future"))
+    }
+
+    @Test
+    fun `does not send somebody to the sign-in screen for any mention of a token`() {
+        // "JWT" alone used to match the session rule, which swept up every
+        // token complaint the backend has.
+        assertNotEquals(
+            setupHint("Hesaba daxil olunmayıb"),
+            setupHint("PGRST303: JWT issued at future"),
+        )
     }
 
     @Test

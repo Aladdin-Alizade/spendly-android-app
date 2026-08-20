@@ -17,7 +17,27 @@ private val SETUP_HINTS: List<Pair<Regex, String>> = listOf(
         "Qeydiyyat Supabase panelində bağlıdır. Authentication → Sign In / Providers " +
         "bölməsindən Email provayderini və qeydiyyatı aktiv edin.",
 
-    Regex("hesaba daxil olunmayıb|not signed in|JWT|session|sessiya", RegexOption.IGNORE_CASE) to
+    /*
+     * A token stamped ahead of the server's clock. It is not an ended session
+     * and signing in again does not fix it — a new token is stamped further
+     * ahead still. The app already waits and retries; this is what is left to
+     * say when the two clocks are far enough apart that waiting did not help.
+     */
+    Regex("PGRST303|issued at future", RegexOption.IGNORE_CASE) to
+        "Cihazınızın saatı ilə server saatı uyğun gəlmir. Telefonun tarix və " +
+        "saatını avtomatik rejimə keçirin — dəyişikliyiniz cihazda saxlanılıb " +
+        "və saatlar uyğunlaşan kimi göndəriləcək.",
+
+    /*
+     * Only what actually ends a session. "JWT" on its own used to match here,
+     * which swept up every token complaint the backend has — including the one
+     * above — and told people who had never logged out to log in again.
+     */
+    Regex(
+        "hesaba daxil olunmayıb|not signed in|sessiya bitib|" +
+            "invalid refresh token|refresh token not found|invalid_grant",
+        RegexOption.IGNORE_CASE,
+    ) to
         "Sessiya bitib. Yenidən daxil olun.",
 
     // 42703 is Postgres, PGRST204 is PostgREST's schema cache, 42P10 is an

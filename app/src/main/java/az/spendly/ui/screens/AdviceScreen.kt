@@ -49,6 +49,7 @@ import az.spendly.domain.formatSignedAZN
 import az.spendly.domain.insights.Advice
 import az.spendly.domain.insights.AdvicePriority
 import az.spendly.domain.insights.METHODS
+import az.spendly.domain.insights.MethodId
 import az.spendly.domain.insights.ORIGIN_LABEL
 import az.spendly.domain.insights.REVIEW_INTERVAL_MONTHS
 import az.spendly.domain.insights.CLASSIFICATION_COVERAGE_MIN
@@ -96,6 +97,34 @@ fun AdviceScreen(data: FinanceData, month: MonthKey, modifier: Modifier = Modifi
 
     val nothing = report.attention.isEmpty() && report.good.isEmpty() && report.review.isEmpty()
 
+    /*
+     * A panel with a sentence where its figure goes is not a panel. Each of
+     * these used to stand on the screen holding nothing but the reason it
+     * could not be filled in — and on a new account that was most of the page.
+     * They stay away until they have something to show, and the reason joins
+     * the list at the bottom that exists to hold exactly these.
+     */
+    val blocked: List<Pair<MethodId, String>> = buildList {
+        if (split.total <= 0) {
+            add(MethodId.NEEDS_WANTS to "Bu ay üçün xərc qeydə alınmayıb")
+        }
+        if (framework == null) {
+            add(
+                MethodId.FRAMEWORK_50_30_20 to when {
+                    split.total <= 0 -> "Xərc qeyd edildikcə paylar hesablanacaq"
+                    !split.hasCoverage -> "Təsnifat tamamlanandan sonra çıxır"
+                    else -> "Bu ay gəlir qeyd edilməyib"
+                },
+            )
+        }
+        if (fund == null) {
+            add(
+                MethodId.EMERGENCY_FUND to
+                    "Median üçün ən azı 3 ayın təsnif edilmiş xərci lazımdır",
+            )
+        }
+    }
+
     LazyColumn(
         modifier = modifier.fillMaxWidth(),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
@@ -126,7 +155,9 @@ fun AdviceScreen(data: FinanceData, month: MonthKey, modifier: Modifier = Modifi
             }
         }
 
-        /* --- budget health: figures, not a score ---------------------- */
+        /* --- budget health: figures, not a score ----------------------
+           Five figures that are all zero say nothing five times over. */
+        if (health.income > 0 || health.expenses > 0) {
         item {
             Panel(title = "Büdcə vəziyyəti", note = "bal deyil — hesablanmış göstəricilər") {
                 /* Five figures, in as many columns as fit. Held at three a
@@ -194,6 +225,7 @@ fun AdviceScreen(data: FinanceData, month: MonthKey, modifier: Modifier = Modifi
                 }
             }
         }
+        }
 
         /* --- what the figures say, before the frameworks that need them --
            With nothing to report this used to be four panels in a row that all
@@ -238,7 +270,12 @@ fun AdviceScreen(data: FinanceData, month: MonthKey, modifier: Modifier = Modifi
             }
         }
 
-        /* --- what the spending is for -------------------------------- */
+        /* --- what the spending is for --------------------------------
+           Kept when there is spending, even if it is not classified yet: what
+           it says then is which categories to classify, which is the one
+           actionable thing on this screen. With no spending at all there is
+           nothing to say and nothing to do, so it goes. */
+        if (split.total > 0) {
         item {
             Panel(
                 title = "Ehtiyac və istək",
@@ -327,51 +364,42 @@ fun AdviceScreen(data: FinanceData, month: MonthKey, modifier: Modifier = Modifi
                 }
             }
         }
+        }
 
         /* --- against a published reference ---------------------------- */
+        if (framework != null) {
         item {
             Panel(title = "50/30/20 çərçivəsi", note = "istinad — qayda deyil") {
-                if (framework != null) {
-                    FrameworkRow(
-                        label = "Zəruri (ehtiyac + borc)",
-                        actual = framework.needsShare,
-                        reference = Reference503020.NEEDS,
-                        amount = framework.needs,
-                    )
-                    FrameworkRow(
-                        label = "İstəyə bağlı",
-                        actual = framework.wantsShare,
-                        reference = Reference503020.WANTS,
-                        amount = framework.wants,
-                    )
-                    FrameworkRow(
-                        label = "Yığım və qalan",
-                        actual = framework.savingsShare,
-                        reference = Reference503020.SAVINGS,
-                        amount = framework.savings,
-                    )
-                    FrameworkReading(framework)
+                FrameworkRow(
+                    label = "Zəruri (ehtiyac + borc)",
+                    actual = framework.needsShare,
+                    reference = Reference503020.NEEDS,
+                    amount = framework.needs,
+                )
+                FrameworkRow(
+                    label = "İstəyə bağlı",
+                    actual = framework.wantsShare,
+                    reference = Reference503020.WANTS,
+                    amount = framework.wants,
+                )
+                FrameworkRow(
+                    label = "Yığım və qalan",
+                    actual = framework.savingsShare,
+                    reference = Reference503020.SAVINGS,
+                    amount = framework.savings,
+                )
+                FrameworkReading(framework)
 
-                    // That this is a reference and not a rule is the panel's
-                    // own note, and the source is in Metodologiya. What is left
-                    // is the part neither of them says.
-                    FrameworkNote("Borc ödənişləri «zəruri» tərəfdə sayılır.")
-                } else {
-                    Missing(
-                        split = split,
-                        full = false,
-                        extra = when {
-                            split.total <= 0 -> "Xərc qeyd edildikcə paylar hesablanacaq."
-                            !split.hasCoverage ->
-                                "Paylar yuxarıdakı təsnifat tamamlanandan sonra çıxır."
-                            else -> "Bu ay gəlir qeyd edilməyib."
-                        },
-                    )
-                }
+                // That this is a reference and not a rule is the panel's
+                // own note, and the source is in Metodologiya. What is left
+                // is the part neither of them says.
+                FrameworkNote("Borc ödənişləri «zəruri» tərəfdə sayılır.")
             }
+        }
         }
 
         /* --- a target, and only a target ------------------------------ */
+        if (fund != null) {
         item {
             Panel(
                 title = "Təcili ehtiyat fondu",
@@ -381,114 +409,107 @@ fun AdviceScreen(data: FinanceData, month: MonthKey, modifier: Modifier = Modifi
                     "yalnız hədəf"
                 },
             ) {
-                if (fund != null) {
-                    Micro("Zəruri aylıq xərc (median)")
+                Micro("Zəruri aylıq xərc (median)")
+                Text(
+                    text = formatAZN(fund.essentialMonthly),
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = colors.text,
+                )
+                Text(
+                    text = "${fund.sampleMonths} aylıq məlumat əsasında",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.textFaint,
+                )
+
+                Row(
+                    modifier = Modifier.padding(top = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    listOf(3, 6, 12).forEach { option ->
+                        val selected = fundMonths == option
+                        Text(
+                            text = "$option ay",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (selected) colors.onAccent else colors.textMuted,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(Radius.xs))
+                                .background(if (selected) colors.accent else colors.surfaceInset)
+                                .clickable { fundMonths = option }
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Micro("Hədəf")
                     Text(
-                        text = formatAZN(fund.essentialMonthly),
-                        style = MaterialTheme.typography.headlineSmall,
+                        text = formatAZN(fund.target),
+                        style = MaterialTheme.typography.titleMedium,
                         color = colors.text,
                     )
+                }
+
+                // Progress, now that the pots make it knowable. Without
+                // them this panel could only ever name a target.
+                if (pace != null && pace.saved > 0) {
+                    Box(modifier = Modifier.padding(top = 10.dp)) {
+                        Meter(pace.saved, fund.target)
+                    }
                     Text(
-                        text = "${fund.sampleMonths} aylıq məlumat əsasında",
+                        text = "yığımınız ${formatAZN(pace.saved)} — hədəfin " +
+                            "${((pace.saved / fund.target) * 100).roundToInt()}%-i" +
+                            if (pace.remaining > 0) {
+                                ", ${formatAZN(pace.remaining)} qalıb"
+                            } else {
+                                " · hədəf yığılıb"
+                            },
                         style = MaterialTheme.typography.bodySmall,
-                        color = colors.textFaint,
-                    )
-
-                    Row(
-                        modifier = Modifier.padding(top = 10.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        listOf(3, 6, 12).forEach { option ->
-                            val selected = fundMonths == option
-                            Text(
-                                text = "$option ay",
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                                color = if (selected) colors.onAccent else colors.textMuted,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(Radius.xs))
-                                    .background(if (selected) colors.accent else colors.surfaceInset)
-                                    .clickable { fundMonths = option }
-                                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                            )
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Micro("Hədəf")
-                        Text(
-                            text = formatAZN(fund.target),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = colors.text,
-                        )
-                    }
-
-                    // Progress, now that the pots make it knowable. Without
-                    // them this panel could only ever name a target.
-                    if (pace != null && pace.saved > 0) {
-                        Box(modifier = Modifier.padding(top = 10.dp)) {
-                            Meter(pace.saved, fund.target)
-                        }
-                        Text(
-                            text = "yığımınız ${formatAZN(pace.saved)} — hədəfin " +
-                                "${((pace.saved / fund.target) * 100).roundToInt()}%-i" +
-                                if (pace.remaining > 0) {
-                                    ", ${formatAZN(pace.remaining)} qalıb"
-                                } else {
-                                    " · hədəf yığılıb"
-                                },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = colors.textMuted,
-                        )
-                    }
-
-                    Reading(
-                        buildString {
-                            append("Gəliriniz dayansa, bu məbləğ təxminən ")
-                            append("${fund.months} ay əsas xərclərinizi qarşılayar.")
-                            if (pace != null && pace.remaining > 0) {
-                                pace.monthsAtRetained?.let {
-                                    append(" Bu ay qalan ${formatAZN(pace.retainedMonthly)} ")
-                                    append("hər ay qalsa, qalan məbləğə ")
-                                    append(String.format(Locale.US, "%.1f", it))
-                                    append(" ayda çatarsınız.")
-                                }
-                                pace.monthsAtSaving?.let {
-                                    append(" Yalnız qaba qoyduğunuz ")
-                                    append("${formatAZN(pace.savingMonthly)} ilə isə ")
-                                    append("${it.roundToInt()} ay çəkər — «qalan» ilə ")
-                                    append("«yığılan» arasındakı fərq budur.")
-                                }
-                            }
-                        },
-                    )
-
-                    // The 3 / 6 / 12 chooser above already says the number is
-                    // yours to pick, so the note keeps to what is not visible:
-                    // where the progress figure comes from.
-                    FrameworkNote(
-                        if (pace != null && pace.saved > 0) {
-                            "İrəliləyiş yığım qablarınızın cəminə görə hesablanır; " +
-                                "tətbiq bank hesablarınızı görmür."
-                        } else {
-                            "Yığım qablarınıza qoyduğunuz məbləğlər burada irəliləyiş " +
-                                "kimi görünəcək."
-                        },
-                    )
-                } else {
-                    Missing(
-                        split = split,
-                        full = false,
-                        extra = "Median üçün ən azı 3 ayın təsnif edilmiş xərci lazımdır.",
+                        color = colors.textMuted,
                     )
                 }
+
+                Reading(
+                    buildString {
+                        append("Gəliriniz dayansa, bu məbləğ təxminən ")
+                        append("${fund.months} ay əsas xərclərinizi qarşılayar.")
+                        if (pace != null && pace.remaining > 0) {
+                            pace.monthsAtRetained?.let {
+                                append(" Bu ay qalan ${formatAZN(pace.retainedMonthly)} ")
+                                append("hər ay qalsa, qalan məbləğə ")
+                                append(String.format(Locale.US, "%.1f", it))
+                                append(" ayda çatarsınız.")
+                            }
+                            pace.monthsAtSaving?.let {
+                                append(" Yalnız qaba qoyduğunuz ")
+                                append("${formatAZN(pace.savingMonthly)} ilə isə ")
+                                append("${it.roundToInt()} ay çəkər — «qalan» ilə ")
+                                append("«yığılan» arasındakı fərq budur.")
+                            }
+                        }
+                    },
+                )
+
+                // The 3 / 6 / 12 chooser above already says the number is
+                // yours to pick, so the note keeps to what is not visible:
+                // where the progress figure comes from.
+                FrameworkNote(
+                    if (pace != null && pace.saved > 0) {
+                        "İrəliləyiş yığım qablarınızın cəminə görə hesablanır; " +
+                            "tətbiq bank hesablarınızı görmür."
+                    } else {
+                        "Yığım qablarınıza qoyduğunuz məbləğlər burada irəliləyiş " +
+                            "kimi görünəcək."
+                    },
+                )
             }
+        }
         }
 
         /* --- what could not be said, and why --------------------------
@@ -496,11 +517,11 @@ fun AdviceScreen(data: FinanceData, month: MonthKey, modifier: Modifier = Modifi
            no plan at all, "Plan və faktiki fərqi" was listed twice, once per
            rule, and a list that names the same thing twice reads as a bug in
            the list rather than as two facts. */
-        val unavailable = report.unavailable
-            .groupBy { it.method }
+        val unavailable = (report.unavailable.map { it.method to it.reason } + blocked)
+            .groupBy { (method, _) -> method }
             .map { (method, entries) ->
                 METHODS[method]?.name.orEmpty() to
-                    entries.map { it.reason }.distinct().joinToString(" · ")
+                    entries.map { (_, reason) -> reason }.distinct().joinToString(" · ")
             }
         if (unavailable.isNotEmpty()) {
             item {
@@ -557,29 +578,16 @@ private fun kindColor(kind: CategoryKind): Color = when (kind) {
  * classify 90% of it sends them to do work that will not help — the real
  * reason is in `extra`.
  *
- * [full] is true for the first panel on the screen that has to say this and
- * false for the ones under it. Three panels can be waiting on one unfinished
- * classification, and three copies of the same paragraph and the same list of
- * category names down one screen is not three times as useful as one. The
- * panels below say only what is theirs to say.
+ * Only this panel says it. The two below it rest on the same classification,
+ * and three copies of one paragraph and one list of category names down a
+ * single screen is not three times as useful as one — they name what they are
+ * waiting for in the list at the bottom instead, and are not drawn at all.
  */
 @Composable
-private fun Missing(split: SpendingSplit, extra: String? = null, full: Boolean = true) {
+private fun Missing(split: SpendingSplit) {
     val colors = spendlyColors
-
-    if (split.total <= 0) {
-        if (full || extra != null) {
-            Text(
-                text = extra ?: "Bu ay üçün xərc qeydə alınmayıb.",
-                style = MaterialTheme.typography.bodySmall,
-                color = colors.textMuted,
-            )
-        }
-        return
-    }
-
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (full && !split.hasCoverage) {
+        if (!split.hasCoverage) {
             Text(
                 text = "Xərclərin ${(split.coverage * 100).roundToInt()}%-i təsnif edilib — " +
                     "hesablama üçün ən azı " +
@@ -600,13 +608,6 @@ private fun Missing(split: SpendingSplit, extra: String? = null, full: Boolean =
                     color = colors.textFaint,
                 )
             }
-        }
-        if (extra != null) {
-            Text(
-                text = extra,
-                style = MaterialTheme.typography.bodySmall,
-                color = colors.textMuted,
-            )
         }
     }
 }
