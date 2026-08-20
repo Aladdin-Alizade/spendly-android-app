@@ -446,7 +446,8 @@ fun BudgetScreen(
     if (editingIncome) {
         PlannedAmountsDialog(
             title = "Planlaşdırılan gəlir",
-            emptyText = "Hələ gəlir kateqoriyası yoxdur. Kateqoriyalar bölməsindən əlavə edin.",
+            emptyText = "Hələ gəlir kateqoriyası yoxdur. Quraşdırma → Kateqoriyalar " +
+                "bölməsindən əlavə edin.",
             rows = incomeRows.map { PlannedRow(it.category, it.orphaned) },
             amounts = plan?.amounts ?: emptyMap(),
             onSave = { amounts ->

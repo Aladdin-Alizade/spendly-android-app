@@ -1,11 +1,16 @@
 /**
- * Whether the device currently has a network at all.
+ * When a network becomes usable.
  *
- * Used only as a nudge: the moment a network appears is the moment worth
- * retrying whatever is queued. It is never used to decide whether a write
- * should be attempted — "the system says there is a network" and "the server
- * can be reached" are different claims, and only the request itself settles
- * the second one.
+ * Deliberately not a state. The app has one question — "is now a moment worth
+ * retrying?" — and tracking online/offline to answer it does not survive
+ * contact with a real device: losing one interface while another is still up
+ * reports "still online", so an outage can pass without ever being seen as
+ * one, and the network coming back then looks like no change at all. Queued
+ * work sat on the device until the app was next reopened.
+ *
+ * So this reports events, not a state, and the caller decides whether there is
+ * anything to send. Whether the server can actually be reached is settled by
+ * the request itself, never by this.
  */
 package az.spendly.data
 
@@ -17,30 +22,27 @@ import android.net.NetworkRequest
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.conflate
 
 class NetworkMonitor(context: Context) {
     private val manager = context.applicationContext
         .getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
 
-    /** Emits on every change, starting with the current state. */
-    val online: Flow<Boolean> = callbackFlow {
+    /**
+     * Emits every time a network becomes available, including the ones already
+     * up when this starts listening. Conflated: a reconnection that brings up
+     * Wi-Fi and cellular a moment apart is one moment, not two.
+     */
+    val available: Flow<Unit> = callbackFlow {
         val connectivity = manager
         if (connectivity == null) {
-            trySend(true)
             awaitClose { }
             return@callbackFlow
         }
 
-        trySend(isOnline())
-
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                trySend(true)
-            }
-
-            override fun onLost(network: Network) {
-                trySend(isOnline())
+                trySend(Unit)
             }
         }
 
@@ -50,7 +52,7 @@ class NetworkMonitor(context: Context) {
         connectivity.registerNetworkCallback(request, callback)
 
         awaitClose { connectivity.unregisterNetworkCallback(callback) }
-    }.distinctUntilChanged()
+    }.conflate()
 
     fun isOnline(): Boolean {
         val connectivity = manager ?: return true

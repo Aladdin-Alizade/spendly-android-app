@@ -135,6 +135,20 @@ create table if not exists public.savings_entries (
 create index if not exists savings_entries_user_date_idx
   on public.savings_entries (user_id, date);
 
+-- The savings side of the month's plan: a figure per pot, as
+-- {"Ehtiyat fondu": 400.00}. Shaped like income_plans because it is the same
+-- kind of statement — what is meant to happen, against which what did happen
+-- is measured. A pot's `target` says how much in the end; this says how much
+-- this month, which is the part a budget can hold you to.
+create table if not exists public.savings_plans (
+  user_id    uuid not null default auth.uid()
+               references auth.users (id) on delete cascade,
+  month      text not null check (month ~ '^\d{4}-\d{2}$'),
+  amounts    jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  primary key (user_id, month)
+);
+
 -- Brings a project keyed on the id alone up to date.
 --
 -- A bare `id` primary key is global, but ids are not: accounts made while the
@@ -209,13 +223,15 @@ alter table public.income_plans enable row level security;
 alter table public.categories enable row level security;
 alter table public.savings_pots enable row level security;
 alter table public.savings_entries enable row level security;
+alter table public.savings_plans enable row level security;
 
 do $$
 declare
   t text;
 begin
   foreach t in array array['transactions', 'budget_lines', 'income_plans',
-                           'categories', 'savings_pots', 'savings_entries']
+                           'categories', 'savings_pots', 'savings_entries',
+                           'savings_plans']
   loop
     execute format('drop policy if exists owner_select on public.%I', t);
     execute format('drop policy if exists owner_insert on public.%I', t);

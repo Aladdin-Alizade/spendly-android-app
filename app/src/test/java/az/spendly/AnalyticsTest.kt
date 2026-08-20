@@ -484,6 +484,50 @@ class InsightTest {
         val kept = insights(sample, month).first { it.id == "retained" }
         assertTrue(kept.text.contains("750.00 ₼"))
     }
+
+    @Test
+    fun `makes no comparison when there is no previous period`() {
+        val ids = insights(data(transactions = listOf(t(amount = 50.0))), month).map { it.id }
+        assertFalse("spend-change" in ids)
+        assertFalse("income-change" in ids)
+    }
+
+    @Test
+    fun `ignores changes too small to be a pattern`() {
+        val sample = data(
+            transactions = listOf(
+                t("2026-07-05", amount = 100.0),
+                t("2026-08-05", amount = 103.0),
+            ),
+        )
+        assertFalse("spend-change" in insights(sample, month).map { it.id })
+    }
+
+    @Test
+    fun `names the largest category and its share`() {
+        val sample = data(
+            transactions = listOf(
+                t(category = "Ərzaq", amount = 80.0),
+                t(category = "İdman", amount = 20.0),
+            ),
+        )
+        val top = insights(sample, month).first { it.id == "top-category" }
+        assertTrue(top.text.contains("Ərzaq"))
+        assertTrue(top.text.contains("80%"))
+    }
+
+    @Test
+    fun `notes when a different category has taken the top spot`() {
+        val sample = data(
+            transactions = listOf(
+                t("2026-07-05", category = "Ərzaq", amount = 200.0),
+                t("2026-08-05", category = "Kreditlər", amount = 300.0),
+            ),
+        )
+        val top = insights(sample, month).first { it.id == "top-category" }
+        assertTrue(top.text.contains("əvvəlki dövrdə"))
+        assertTrue(top.text.contains("Ərzaq"))
+    }
 }
 
 class ReconciliationTest {

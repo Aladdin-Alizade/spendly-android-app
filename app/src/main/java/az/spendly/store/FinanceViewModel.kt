@@ -97,18 +97,18 @@ class FinanceViewModel(
      * A network appearing is the moment queued work can go out. Nothing else
      * triggers a retry, because retrying on a timer would keep failing at
      * exactly the same rate as the thing that is not there.
+     *
+     * A device that is already in step with the server has nothing to say to
+     * it, so a new network is not a reason to talk — which is also what keeps
+     * the networks present at startup from re-running the load that has just
+     * happened.
      */
     private fun observeNetwork() {
         val monitor = network ?: return
         val source = syncing ?: return
         viewModelScope.launch {
-            var first = true
-            monitor.online.collect { online ->
-                if (first) {
-                    first = false
-                    return@collect
-                }
-                if (!online) return@collect
+            monitor.available.collect {
+                if (source.state.value.status == SyncStatus.SYNCED) return@collect
                 val merged = runCatching { source.sync() }.getOrNull()
                 if (merged != null) _state.value = _state.value.copy(data = merged)
             }

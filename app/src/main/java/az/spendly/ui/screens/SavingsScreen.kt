@@ -47,6 +47,7 @@ import az.spendly.domain.entriesInMonth
 import az.spendly.domain.formatAZN
 import az.spendly.domain.formatDayShort
 import az.spendly.domain.formatMonth
+import az.spendly.domain.monthOf
 import az.spendly.domain.potRows
 import az.spendly.domain.savingsBalance
 import az.spendly.domain.spendableBalance
@@ -88,14 +89,19 @@ fun SavingsScreen(
     var newEntryPot by remember { mutableStateOf<String?>(null) }
     var showAll by remember { mutableStateOf(false) }
 
-    val rows = potRows(data)
-    val saved = savingsBalance(data.savingsEntries)
-    val spendable = spendableBalance(data)
-    val total = totalHoldings(data)
+    /* Every figure is as of the end of the month in the header. The rule is
+       the app's, not this screen's: what you are looking at is the month you
+       chose, everywhere. A balance that ignored it would disagree with İcmal. */
+    val rows = potRows(data, month)
+    val saved = savingsBalance(data.savingsEntries, month)
+    val spendable = spendableBalance(data, month)
+    val total = totalHoldings(data, month)
     val fromIncome = depositedFromIncome(data.savingsEntries, month)
     val fromOutside = depositedFromOutside(data.savingsEntries, month)
     val monthEntries = entriesInMonth(data.savingsEntries, month)
-    val allEntries = data.savingsEntries.sortedByDescending { it.date }
+    val allEntries = data.savingsEntries
+        .filter { monthOf(it.date) <= month }
+        .sortedByDescending { it.date }
     val listed = if (showAll) allEntries else monthEntries
 
     val convertible = convertibleSavingTransactions(data)
@@ -228,7 +234,7 @@ fun SavingsScreen(
                     action = if (allEntries.size > monthEntries.size) {
                         {
                             TextButton(onClick = { showAll = !showAll }) {
-                                Text(if (showAll) formatMonth(month) else "Bütün tarixçə")
+                                Text(if (showAll) formatMonth(month) else "Bu aya qədər hamısı")
                             }
                         }
                     } else {

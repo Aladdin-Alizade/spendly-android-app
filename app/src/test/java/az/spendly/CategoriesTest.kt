@@ -12,6 +12,7 @@ import az.spendly.domain.IncomePlan
 import az.spendly.domain.Transaction
 import az.spendly.domain.TransactionType
 import az.spendly.domain.addCategory
+import az.spendly.domain.categoriesFromData
 import az.spendly.domain.categoryNames
 import az.spendly.domain.categoryUsage
 import az.spendly.domain.removeCategory
@@ -272,5 +273,79 @@ class IncomePlanCategoryTest {
     fun `leaves expense renames out of the income plan entirely`() {
         val next = renameCategory(planned, "c1", "Yemək")
         assertEquals(planned.incomePlans, next.incomePlans)
+    }
+}
+
+/* ------------------------------------------------------------------ *
+ * Categories implied by the data itself
+ * ------------------------------------------------------------------ */
+
+class CategoriesFromDataTest {
+
+    @Test
+    fun `gives a new account nothing, because it has nothing`() {
+        assertTrue(categoriesFromData(sample(categories = emptyList())).isEmpty())
+    }
+
+    @Test
+    fun `reads the categories a stored history already names`() {
+        val data = sample(
+            categories = emptyList(),
+            transactions = listOf(
+                c(category = "Ərzaq"),
+                c(category = "Nəqliyyat"),
+                c(type = TransactionType.INCOME, category = "Maaş"),
+            ),
+        )
+
+        assertEquals(
+            listOf(
+                CategoryDef("expense-0", "Ərzaq", TransactionType.EXPENSE),
+                CategoryDef("expense-1", "Nəqliyyat", TransactionType.EXPENSE),
+                CategoryDef("income-0", "Maaş", TransactionType.INCOME),
+            ),
+            categoriesFromData(data),
+        )
+    }
+
+    @Test
+    fun `files a budget line under expenses and a planned figure under income`() {
+        val data = sample(
+            categories = emptyList(),
+            budgetLines = listOf(BudgetLine("b1", M, "Ev", "Kirayə", 230.0)),
+            incomePlans = listOf(IncomePlan(M, mapOf("Mentorluq" to 200.0))),
+        )
+
+        assertEquals(
+            listOf(
+                CategoryDef("expense-0", "Kirayə", TransactionType.EXPENSE),
+                CategoryDef("income-0", "Mentorluq", TransactionType.INCOME),
+            ),
+            categoriesFromData(data),
+        )
+    }
+
+    @Test
+    fun `names a category once, however many rows use it`() {
+        val data = sample(
+            categories = emptyList(),
+            transactions = listOf(c(category = "Ərzaq"), c(category = " ərzaq ")),
+        )
+        assertEquals(1, categoriesFromData(data).size)
+    }
+
+    @Test
+    fun `keeps the same name on both sides of the ledger apart`() {
+        val data = sample(
+            categories = emptyList(),
+            transactions = listOf(
+                c(category = "Bonus"),
+                c(type = TransactionType.INCOME, category = "Bonus"),
+            ),
+        )
+        assertEquals(
+            listOf(TransactionType.EXPENSE, TransactionType.INCOME),
+            categoriesFromData(data).map { it.type },
+        )
     }
 }

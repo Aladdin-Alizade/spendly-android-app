@@ -52,9 +52,12 @@ fun SavingsPotDialog(
     var reassignTo by remember { mutableStateOf(alternatives.firstOrNull()?.name.orEmpty()) }
 
     val nameError = validatePotName(data, name, pot?.id)
-    // A target is optional; only a value that is there and unreadable is wrong.
-    val targetError = if (target.isNotBlank() && parseAmount(target) == null) {
-        "Məbləği yoxlayın"
+    // A target is optional. One that is there has to be a figure worth aiming
+    // at — a target of zero is not a target, and saying so beats silently
+    // storing nothing where somebody typed something.
+    val parsedTarget = if (target.isBlank()) null else parseAmount(target)
+    val targetError = if (target.isNotBlank() && (parsedTarget == null || parsedTarget <= 0)) {
+        "Hədəf sıfırdan böyük olmalıdır"
     } else {
         null
     }
@@ -86,7 +89,7 @@ fun SavingsPotDialog(
                         if (nameError != null || targetError != null) {
                             showErrors = true
                         } else {
-                            val amount = parseAmount(target)?.takeIf { it > 0 }
+                            val amount = parsedTarget?.takeIf { it > 0 }
                             if (pot != null) {
                                 onRename(pot.id, name)
                                 if (amount != pot.target) onSetTarget(pot.id, amount)

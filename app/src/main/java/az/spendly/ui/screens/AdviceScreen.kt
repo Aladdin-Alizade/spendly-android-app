@@ -182,6 +182,45 @@ fun AdviceScreen(data: FinanceData, month: MonthKey, modifier: Modifier = Modifi
             }
         }
 
+        /* --- what the figures say, before the frameworks that need them -- */
+        if (nothing) {
+            item {
+                Panel(title = "Müşahidə yoxdur") {
+                    Text(
+                        text = "Bu ay üçün rəqəmlərin təsdiqlədiyi müşahidə yoxdur. " +
+                            "Əməliyyat və plan əlavə etdikcə burada müşahidələr görünəcək.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textMuted,
+                    )
+                }
+            }
+        }
+
+        item {
+            Bucket(
+                title = "Diqqət tələb edir",
+                priority = AdvicePriority.ATTENTION,
+                items = report.attention,
+                empty = "Diqqət tələb edən hal aşkarlanmadı.",
+            )
+        }
+        item {
+            Bucket(
+                title = "Yaxşı gedir",
+                priority = AdvicePriority.GOOD,
+                items = report.good,
+                empty = "Bu ay üçün müsbət müşahidə yoxdur.",
+            )
+        }
+        item {
+            Bucket(
+                title = "Nəzərdən keçirməyə dəyər",
+                priority = AdvicePriority.REVIEW,
+                items = report.review,
+                empty = "Nəzərdən keçirilməli hal yoxdur.",
+            )
+        }
+
         /* --- what the spending is for -------------------------------- */
         item {
             Panel(
@@ -428,44 +467,6 @@ fun AdviceScreen(data: FinanceData, month: MonthKey, modifier: Modifier = Modifi
                     )
                 }
             }
-        }
-
-        if (nothing) {
-            item {
-                Panel(title = "Müşahidə yoxdur") {
-                    Text(
-                        text = "Bu ay üçün rəqəmlərin təsdiqlədiyi müşahidə yoxdur. " +
-                            "Əməliyyat və plan əlavə etdikcə burada müşahidələr görünəcək.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.textMuted,
-                    )
-                }
-            }
-        }
-
-        item {
-            Bucket(
-                title = "Diqqət tələb edir",
-                priority = AdvicePriority.ATTENTION,
-                items = report.attention,
-                empty = "Diqqət tələb edən hal aşkarlanmadı.",
-            )
-        }
-        item {
-            Bucket(
-                title = "Yaxşı gedir",
-                priority = AdvicePriority.GOOD,
-                items = report.good,
-                empty = "Bu ay üçün müsbət müşahidə yoxdur.",
-            )
-        }
-        item {
-            Bucket(
-                title = "Nəzərdən keçirməyə dəyər",
-                priority = AdvicePriority.REVIEW,
-                items = report.review,
-                empty = "Nəzərdən keçirilməli hal yoxdur.",
-            )
         }
 
         /* --- what could not be said, and why -------------------------- */

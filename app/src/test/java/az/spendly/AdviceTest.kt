@@ -418,3 +418,26 @@ class OneSubjectPerBucketTest {
         assertTrue(subjects.contains("Nəqliyyat"))
     }
 }
+
+class RetainedTrendTest {
+
+    @Test
+    fun `does not print a negative retained rate as a positive one`() {
+        // A month that overspent has a negative retained rate. Showing it as
+        // its magnitude turned the comparison into "16% / 16%", which says
+        // nothing.
+        val months = listOf("2026-05", "2026-06", "2026-07")
+        val data = financeData(
+            transactions = months.map { income(it, 1000.0) } +
+                months.map { spend(it, "Ərzaq", 800.0) } +
+                listOf(income(M, 1000.0), spend(M, "Ərzaq", 1200.0)),
+        )
+
+        val advice = budgetAdvice(data, M, TODAY).all().first { it.id == "retained-trend" }
+        // Both sides keep their sign, so the two figures cannot read as equal.
+        assertTrue(advice.fact.contains("-20%"))
+        assertTrue(advice.fact.contains("20%"))
+        assertTrue(advice.fact.contains("daha azını saxladınız"))
+    }
+}
+

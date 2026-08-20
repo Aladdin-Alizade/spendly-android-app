@@ -441,3 +441,73 @@ class IncomePlanMigrationTest {
         assertEquals(0.0, plannedIncomeOf(null), 0.0)
     }
 }
+
+/**
+ * Every figure is derived, so an edit has to move all of them at once. These
+ * are the cases where a cached total would show its age.
+ */
+class RecomputeTest {
+
+    private val base = build(
+        transactions = listOf(
+            tx(id = "a", date = "$M-01", type = TransactionType.INCOME, category = "Maaş", amount = 990.0),
+            tx(id = "b", date = "$M-03", category = "Əlavə xərclər", amount = 230.0),
+        ),
+        budgetLines = sheetPlan(M),
+        incomePlans = listOf(IncomePlan(M, mapOf("Maaş" to 990.0))),
+    )
+
+    @Test
+    fun `recomputes after an edit`() {
+        val edited = base.copy(
+            transactions = base.transactions.map {
+                if (it.id == "b") it.copy(amount = 300.0) else it
+            },
+        )
+        assertEquals(300.0, summarise(edited, M).actualExpenses, 0.0)
+        assertEquals(690.0, summarise(edited, M).actualRemainder, 0.0)
+    }
+
+    @Test
+    fun `recomputes after a delete`() {
+        val deleted = base.copy(transactions = base.transactions.filter { it.id != "b" })
+        assertEquals(0.0, summarise(deleted, M).actualExpenses, 0.0)
+        assertEquals(990.0, summarise(deleted, M).actualRemainder, 0.0)
+        assertEquals(
+            0.0,
+            categoryTotals(deleted, M).first { it.category == "Əlavə xərclər" }.actual,
+            0.0,
+        )
+    }
+
+    @Test
+    fun `moves the money when a transaction is edited into another month`() {
+        val moved = base.copy(
+            transactions = base.transactions.map {
+                if (it.id == "b") it.copy(date = "2025-11-03") else it
+            },
+        )
+        assertEquals(0.0, summarise(moved, M).actualExpenses, 0.0)
+        assertEquals(230.0, summarise(moved, "2025-11").actualExpenses, 0.0)
+    }
+
+    @Test
+    fun `returns zero for a month with no transactions but keeps the plan visible`() {
+        val data = build(budgetLines = sheetPlan(M))
+        val summary = summarise(data, "2025-11")
+        assertEquals(0.0, summary.plannedExpenses, 0.0)
+        assertEquals(0.0, summary.actualExpenses, 0.0)
+    }
+
+    @Test
+    fun `omits categories that have neither plan nor spend`() {
+        val data = build(
+            budgetLines = listOf(BudgetLine("b1", M, "Saç", "Şəxsi gigiyena", 20.0)),
+        )
+        val totals = categoryTotals(data, M)
+        assertEquals(1, totals.size)
+        assertEquals(20.0, totals[0].planned, 0.0)
+        assertEquals(0.0, totals[0].actual, 0.0)
+        assertEquals(0.0, totals[0].share, 0.0)
+    }
+}
