@@ -21,34 +21,56 @@ import az.spendly.domain.CategoryDef
 import az.spendly.domain.FinanceData
 import az.spendly.domain.SavingsPot
 import az.spendly.domain.TransactionType
+import az.spendly.domain.moveCategoryReferences
+import az.spendly.domain.movePotReferences
 
-fun mergeFinanceData(base: FinanceData, local: FinanceData, remote: FinanceData) = FinanceData(
-    transactions = mergeRows(base.transactions, local.transactions, remote.transactions) { it.id },
-    budgetLines = mergeRows(base.budgetLines, local.budgetLines, remote.budgetLines) { it.id },
-    incomePlans = mergeRows(base.incomePlans, local.incomePlans, remote.incomePlans) { it.month },
-    categories = dedupeCategories(
-        mergeRows(base.categories, local.categories, remote.categories) { it.id },
-    ),
-    savingsPots = dedupePots(
-        mergeRows(base.savingsPots, local.savingsPots, remote.savingsPots) { it.id },
-    ),
-    savingsEntries = mergeRows(
-        base.savingsEntries,
-        local.savingsEntries,
-        remote.savingsEntries,
-    ) { it.id },
-    savingsPlans = mergeRows(
-        base.savingsPlans,
-        local.savingsPlans,
-        remote.savingsPlans,
-    ) { it.month },
-)
+fun mergeFinanceData(
+    base: FinanceData,
+    local: FinanceData,
+    remote: FinanceData,
+): FinanceData {
+    val merged = FinanceData(
+        transactions = mergeRows(base.transactions, local.transactions, remote.transactions) { it.id },
+        budgetLines = mergeRows(base.budgetLines, local.budgetLines, remote.budgetLines) { it.id },
+        incomePlans = mergeRows(base.incomePlans, local.incomePlans, remote.incomePlans) { it.month },
+        categories = mergeRows(base.categories, local.categories, remote.categories) { it.id },
+        savingsPots = mergeRows(base.savingsPots, local.savingsPots, remote.savingsPots) { it.id },
+        savingsEntries = mergeRows(
+            base.savingsEntries,
+            local.savingsEntries,
+            remote.savingsEntries,
+        ) { it.id },
+        savingsPlans = mergeRows(
+            base.savingsPlans,
+            local.savingsPlans,
+            remote.savingsPlans,
+        ) { it.month },
+    )
+
+    return dedupePots(dedupeCategories(merged))
+}
 
 /** Two ids, one pot — the same collision categories have, for the same reason:
  *  a pot is unique by name on the server, and every entry names its pot. */
-private fun dedupePots(pots: List<SavingsPot>): List<SavingsPot> {
-    val seen = mutableSetOf<String>()
-    return pots.filter { seen.add(it.name.trim().lowercase()) }
+private fun dedupePots(data: FinanceData): FinanceData {
+    val seen = mutableMapOf<String, SavingsPot>()
+    val kept = mutableListOf<SavingsPot>()
+    val moves = mutableListOf<Pair<String, String>>()
+
+    for (pot in data.savingsPots) {
+        val survivor = seen[pot.name.trim().lowercase()]
+        when {
+            survivor == null -> {
+                seen[pot.name.trim().lowercase()] = pot
+                kept += pot
+            }
+            survivor.name != pot.name -> moves += pot.name to survivor.name
+        }
+    }
+
+    var next = data.copy(savingsPots = kept)
+    for ((from, to) in moves) next = movePotReferences(next, from, to)
+    return next
 }
 
 /**
@@ -60,15 +82,36 @@ private fun dedupePots(pots: List<SavingsPot>): List<SavingsPot> {
  * server rejects the pair outright — a category is unique per (user, type,
  * name) there, which is the rule that makes a rename possible at all.
  *
- * So a duplicate by name is resolved in favour of the server's row. Nothing is
- * lost by dropping the local one: every transaction, budget line and planned
- * figure refers to a category by name, never by id.
+ * So a duplicate by name is resolved in favour of the server's row — and every
+ * row that named the one being dropped is moved onto the survivor. Dropping
+ * the definition alone was not enough: the app matches a category by name and
+ * the two spellings differ only in case, so the transactions left behind named
+ * a category the picker no longer offered, and editing one of them asked for a
+ * category that could not be chosen.
  */
-private fun dedupeCategories(categories: List<CategoryDef>): List<CategoryDef> {
-    val seen = mutableSetOf<Pair<TransactionType, String>>()
+private fun dedupeCategories(data: FinanceData): FinanceData {
+    val seen = mutableMapOf<Pair<TransactionType, String>, CategoryDef>()
+    val kept = mutableListOf<CategoryDef>()
+    val moves = mutableListOf<Triple<String, String, TransactionType>>()
+
     // Merged order is the server's first, so the surviving id is the
     // server's — the one every other device already agrees on.
-    return categories.filter { seen.add(it.type to it.name.trim().lowercase()) }
+    for (category in data.categories) {
+        val key = category.type to category.name.trim().lowercase()
+        val survivor = seen[key]
+        when {
+            survivor == null -> {
+                seen[key] = category
+                kept += category
+            }
+            survivor.name != category.name ->
+                moves += Triple(category.name, survivor.name, category.type)
+        }
+    }
+
+    var next = data.copy(categories = kept)
+    for ((from, to, type) in moves) next = moveCategoryReferences(next, from, to, type)
+    return next
 }
 
 /**

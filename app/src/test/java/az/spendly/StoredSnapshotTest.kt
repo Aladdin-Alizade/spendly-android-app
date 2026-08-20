@@ -10,6 +10,7 @@ package az.spendly
 
 import az.spendly.data.SYNCED_SNAPSHOT
 import az.spendly.data.WORKING_SNAPSHOT
+import az.spendly.data.decodeSnapshot
 import az.spendly.data.syncedSnapshot
 import az.spendly.data.workingSnapshot
 import az.spendly.domain.CategoryDef
@@ -120,6 +121,57 @@ class StoredSnapshotTest {
             categories = listOf(CategoryDef("c1", "Kirayə", TransactionType.EXPENSE)),
         )
         assertEquals(stored.categories, normaliseData(stored).categories)
+    }
+}
+
+/**
+ * Reading a file that is not quite right.
+ *
+ * The whole file used to be decoded in one go, so one row an older build had
+ * written differently threw — and every other row this device had entered
+ * offline was discarded with it, silently, on the next start. A row that
+ * cannot be read is now the only thing lost.
+ */
+class DamagedSnapshotTest {
+
+    @Test
+    fun `keeps the rows it can read when one of them is broken`() {
+        val text = """
+            {
+              "transactions": [
+                {"id":"t1","date":"2026-08-05","type":"expense","category":"Ərzaq",
+                 "description":"Bazarlıq","amount":40.0},
+                {"id":"t2"},
+                {"id":"t3","date":"2026-08-06","type":"expense","category":"Ərzaq",
+                 "description":"Çörək","amount":5.0}
+              ],
+              "savingsPots": [{"id":"p1","name":"Ehtiyat fondu"}]
+            }
+        """.trimIndent()
+
+        val read = decodeSnapshot(text)
+        assertEquals(listOf("t1", "t3"), read.transactions.map { it.id })
+        assertEquals(45.0, read.transactions.sumOf { it.amount }, 0.0)
+        assertEquals(1, read.savingsPots.size)
+    }
+
+    @Test
+    fun `a missing collection is an empty one, not a failure`() {
+        val read = decodeSnapshot("""{"transactions": []}""")
+        assertEquals(emptyData, read)
+    }
+
+    @Test
+    fun `still refuses something that is not a snapshot at all`() {
+        // Nothing to keep here, so the caller falling back to an empty account
+        // is the right answer rather than a guess at what was meant.
+        var threw = false
+        try {
+            decodeSnapshot("not json")
+        } catch (cause: Exception) {
+            threw = true
+        }
+        assertTrue(threw)
     }
 }
 

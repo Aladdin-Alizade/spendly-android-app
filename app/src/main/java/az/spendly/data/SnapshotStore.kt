@@ -10,10 +10,22 @@
 package az.spendly.data
 
 import android.content.Context
+import az.spendly.domain.BudgetLine
+import az.spendly.domain.CategoryDef
 import az.spendly.domain.FinanceData
+import az.spendly.domain.IncomePlan
+import az.spendly.domain.SavingsEntry
+import az.spendly.domain.SavingsPlan
+import az.spendly.domain.SavingsPot
+import az.spendly.domain.Transaction
 import az.spendly.domain.normaliseData
 import java.io.File
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
 
 class SnapshotStore(context: Context, private val fileName: String) {
     private val directory = context.applicationContext.filesDir
@@ -21,36 +33,78 @@ class SnapshotStore(context: Context, private val fileName: String) {
 
     /** Null when nothing has been written, or when what was written is unreadable. */
     fun read(): FinanceData? = try {
-        if (file.exists()) {
-            normaliseData(json.decodeFromString(FinanceData.serializer(), file.readText()))
-        } else {
-            null
-        }
+        if (file.exists()) decodeSnapshot(file.readText()) else null
     } catch (cause: Exception) {
         // Corrupt or unreadable storage must not brick the app.
         null
     }
 
-    fun write(data: FinanceData) {
+    /**
+     * True when the snapshot is on disk.
+     *
+     * A full disk is not a reason to throw: the edit is already on screen and
+     * the caller has a server to try. It is a reason to say so, which is what
+     * the return value is for — silently dropping the working copy would leave
+     * the app promising an offline safety net it no longer has.
+     */
+    fun write(data: FinanceData): Boolean = try {
         val temporary = File(directory, "$fileName.tmp")
-        temporary.writeText(json.encodeToString(FinanceData.serializer(), data))
+        temporary.writeText(snapshotJson.encodeToString(FinanceData.serializer(), data))
         if (!temporary.renameTo(file)) {
             file.writeText(temporary.readText())
             temporary.delete()
         }
+        true
+    } catch (cause: Exception) {
+        false
     }
 
     fun clear() {
         file.delete()
     }
-
-    private companion object {
-        val json = Json {
-            ignoreUnknownKeys = true
-            encodeDefaults = true
-        }
-    }
 }
+
+private val snapshotJson = Json {
+    ignoreUnknownKeys = true
+    encodeDefaults = true
+}
+
+/**
+ * A stored snapshot, one row at a time.
+ *
+ * Decoding the file as a whole meant a single unreadable row — a field an
+ * older build wrote differently, a half-finished hand edit — threw, and
+ * everything this device had entered offline was thrown away with it. A row
+ * that cannot be read is skipped instead: the rest of the month is still the
+ * person's own work, and is worth more than the tidiness of refusing all of
+ * it.
+ *
+ * Still throws when the file is not a snapshot at all, which is the one case
+ * where there is genuinely nothing to keep.
+ */
+fun decodeSnapshot(text: String): FinanceData {
+    val root = snapshotJson.parseToJsonElement(text).jsonObject
+    return normaliseData(
+        FinanceData(
+            transactions = root.rows("transactions", Transaction.serializer()),
+            budgetLines = root.rows("budgetLines", BudgetLine.serializer()),
+            incomePlans = root.rows("incomePlans", IncomePlan.serializer()),
+            categories = root.rows("categories", CategoryDef.serializer()),
+            savingsPots = root.rows("savingsPots", SavingsPot.serializer()),
+            savingsEntries = root.rows("savingsEntries", SavingsEntry.serializer()),
+            savingsPlans = root.rows("savingsPlans", SavingsPlan.serializer()),
+        ),
+    )
+}
+
+private fun <T> JsonObject.rows(key: String, serializer: KSerializer<T>): List<T> =
+    (this[key] as? JsonArray)
+        .orEmpty()
+        .mapNotNull { row ->
+            runCatching { snapshotJson.decodeFromJsonElement(serializer, row) }.getOrNull()
+        }
+
+private fun JsonArray?.orEmpty(): List<JsonElement> = this ?: emptyList()
 
 /**
  * The working copy — what the app reads and writes, online or not.

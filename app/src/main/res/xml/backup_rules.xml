@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  What Android's backup may take, on API 30 and below.
+
+  Everything except the session. A backup restored onto a second device would
+  otherwise arrive holding the same refresh token as the first — and Supabase
+  rotates that token as it is used, so the two devices take turns invalidating
+  each other and whichever loses tells its owner their session has ended, on an
+  account nobody signed out of.
+
+  The snapshots stay: they are the person's own work, they are already scoped
+  to the account that wrote them, and carrying them onto a new phone is the
+  point of a backup.
+-->
+<full-backup-content>
+    <exclude domain="sharedpref" path="spendly.supabase.xml" />
+</full-backup-content>

@@ -400,18 +400,24 @@ class FinanceViewModel(
                         return FinanceViewModel(LocalRepository(application)) as T
                     }
 
-                    // The session reads the tokens the sign-in screen stored,
-                    // so this is the same account either way. The device's own
-                    // snapshot is still the working copy — the account decides
-                    // where the data belongs, not whether it is saved.
-                    val session = SupabaseSession(application)
-                    val remote = SupabaseRepository(session)
+                    // The same session the sign-in screen uses, so signing
+                    // out empties the tokens this store reads too. The device's
+                    // own snapshot is still the working copy — the account
+                    // decides where the data belongs, not whether it is saved.
+                    val session = SupabaseSession.get(application)
+                    val owner = session.userId
+                    // Bound to the account it was built for. A store keyed by
+                    // user stays in the activity's store after that user signs
+                    // out, and a network appearing still reaches it; naming its
+                    // owner is what stops it writing into the account that
+                    // signed in after.
+                    val remote = SupabaseRepository(session, owner)
                     return FinanceViewModel(
                         // The snapshots belong to the account, not to the
                         // install: one file per account is what stops one
                         // account's rows being handed to the next one to sign
                         // in here and uploaded as its own.
-                        repository = SyncingRepository(application, remote, session.userId),
+                        repository = SyncingRepository(application, remote, owner),
                         network = NetworkMonitor(application),
                     ) as T
                 }

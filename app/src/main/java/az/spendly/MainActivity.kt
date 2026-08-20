@@ -37,8 +37,20 @@ class MainActivity : ComponentActivity() {
      */
     private val recovery = mutableStateOf<Pair<String, String?>?>(null)
 
+    /**
+     * Whether the link this activity was started with has already been used.
+     *
+     * Saved and restored, because the intent is not: a rotation recreates the
+     * activity with the original VIEW intent still attached, and reading it
+     * again adopts a one-time link a second time. The link is spent by then,
+     * so what the user got for turning their phone was an error on a password
+     * they were halfway through setting.
+     */
+    private var recoveryHandled = false
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        recoveryHandled = false
         readRecoveryLink(intent)
     }
 
@@ -59,11 +71,17 @@ class MainActivity : ComponentActivity() {
         recovery.value = access to parts["refresh_token"]
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(KEY_RECOVERY_HANDLED, recoveryHandled)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
-        readRecoveryLink(intent)
+        recoveryHandled = savedInstanceState?.getBoolean(KEY_RECOVERY_HANDLED) == true
+        if (!recoveryHandled) readRecoveryLink(intent)
 
         setContent {
             SpendlyTheme {
@@ -72,10 +90,20 @@ class MainActivity : ComponentActivity() {
                         .fillMaxSize()
                         .background(spendlyColors.background),
                 ) {
-                    Root(recovery = recovery.value, onRecoveryHandled = { recovery.value = null })
+                    Root(
+                        recovery = recovery.value,
+                        onRecoveryHandled = {
+                            recoveryHandled = true
+                            recovery.value = null
+                        },
+                    )
                 }
             }
         }
+    }
+
+    private companion object {
+        const val KEY_RECOVERY_HANDLED = "recovery_handled"
     }
 }
 

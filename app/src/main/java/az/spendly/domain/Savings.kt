@@ -159,19 +159,39 @@ fun validatePotName(
 fun addPot(data: FinanceData, pot: SavingsPot): FinanceData =
     data.copy(savingsPots = data.savingsPots + pot.copy(name = pot.name.trim()))
 
-/** Rename the pot and every entry that names it, in one change. Touches no
+/**
+ * Carry every reference across.
+ *
+ * A pot is named in two places, not one: by the entries that moved money into
+ * and out of it, and by the month's savings plan, which is keyed by pot name
+ * the way the income plan is keyed by category name. Moving only the entries
+ * is how renaming a pot silently orphaned the figure somebody had planned for
+ * it — the money stayed, the plan it was measured against did not.
+ *
+ * A move onto a pot that is already planned for adds the two together, the
+ * same way the income side does.
+ */
+fun movePotReferences(data: FinanceData, from: String, to: String): FinanceData = data.copy(
+    savingsEntries = data.savingsEntries.map { entry ->
+        if (entry.pot == from) entry.copy(pot = to) else entry
+    },
+    savingsPlans = data.savingsPlans.map { plan ->
+        val moved = plan.amounts[from] ?: return@map plan
+        val rest = plan.amounts.filterKeys { it != from }
+        plan.copy(amounts = rest + (to to (rest[to] ?: 0.0) + moved))
+    },
+)
+
+/** Rename the pot and everything that names it, in one change. Touches no
  *  amount, so no balance moves. */
 fun renamePot(data: FinanceData, id: String, name: String): FinanceData {
     val target = data.savingsPots.firstOrNull { it.id == id }
     val trimmed = name.trim()
     if (target == null || trimmed.isEmpty() || target.name == trimmed) return data
 
-    return data.copy(
+    return movePotReferences(data, target.name, trimmed).copy(
         savingsPots = data.savingsPots.map {
             if (it.id == id) it.copy(name = trimmed) else it
-        },
-        savingsEntries = data.savingsEntries.map {
-            if (it.pot == target.name) it.copy(pot = trimmed) else it
         },
     )
 }
@@ -201,16 +221,13 @@ fun removePot(data: FinanceData, id: String, reassignTo: String? = null): Financ
     val used = data.savingsEntries.any { it.pot == target.name }
     if (used && reassignTo == null) return data
 
-    return data.copy(
-        savingsPots = data.savingsPots.filter { it.id != id },
-        savingsEntries = if (reassignTo != null) {
-            data.savingsEntries.map {
-                if (it.pot == target.name) it.copy(pot = reassignTo) else it
-            }
-        } else {
-            data.savingsEntries
-        },
-    )
+    val moved = if (reassignTo != null) {
+        movePotReferences(data, target.name, reassignTo)
+    } else {
+        data
+    }
+
+    return moved.copy(savingsPots = moved.savingsPots.filter { it.id != id })
 }
 
 data class ConvertibleSavings(

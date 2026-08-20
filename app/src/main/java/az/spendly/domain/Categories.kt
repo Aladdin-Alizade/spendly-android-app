@@ -158,7 +158,7 @@ fun renameCategory(data: FinanceData, id: String, name: String): FinanceData {
     val trimmed = name.trim()
     if (target == null || trimmed.isEmpty() || target.name == trimmed) return data
 
-    val moved = applyRename(data, target.name, trimmed, target.type)
+    val moved = moveCategoryReferences(data, target.name, trimmed, target.type)
     return moved.copy(
         categories = data.categories.map { category ->
             if (category.id == id) category.copy(name = trimmed) else category
@@ -177,7 +177,7 @@ fun removeCategory(data: FinanceData, id: String, reassignTo: String? = null): F
     val target = data.categories.firstOrNull { it.id == id } ?: return data
 
     val moved = if (reassignTo != null) {
-        applyRename(data, target.name, reassignTo, target.type)
+        moveCategoryReferences(data, target.name, reassignTo, target.type)
     } else {
         data
     }
@@ -194,8 +194,12 @@ fun removeCategory(data: FinanceData, id: String, reassignTo: String? = null): F
  * transactions and by budget lines, an income category by transactions and by
  * the planned-income figures. Missing one of these is how a rename quietly
  * drops a planned amount, so all of them move together.
+ *
+ * Public because a rename is not the only thing that has to do this: merging
+ * two devices can find one category under two ids, and the one that loses has
+ * to hand its rows over rather than leave them naming something that is gone.
  */
-private fun applyRename(
+fun moveCategoryReferences(
     data: FinanceData,
     from: String,
     to: String,

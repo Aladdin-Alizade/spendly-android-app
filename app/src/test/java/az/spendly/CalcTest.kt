@@ -335,6 +335,20 @@ class MoneyTest {
         assertEquals(2.68, round2(2.675), 0.0)
         assertEquals(0.3, sumOf(listOf(0.1, 0.2)), 0.0)
     }
+
+    @Test
+    fun `rounds a half cent up above one manat, the way the web app does`() {
+        // The two apps read one account, so a figure that rounds differently
+        // on each is two answers to the same question. These are the ones that
+        // used to disagree: the correction has to survive the scaling, and on
+        // the web it was being applied before it, where it was too small to
+        // change anything at all.
+        assertEquals(8.17, round2(8.165), 0.0)
+        assertEquals(2.14, round2(2.135), 0.0)
+        assertEquals(4.02, round2(4.015), 0.0)
+        assertEquals(-8.17, round2(-8.165), 0.0)
+        assertEquals(8.17, parseAmount("8.165")!!, 0.0)
+    }
 }
 
 class DateTest {

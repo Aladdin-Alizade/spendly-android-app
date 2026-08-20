@@ -145,6 +145,16 @@ class NewPasswordTest {
                 .contains("Yenidən sıfırlama"),
         )
     }
+
+    @Test
+    fun `says the same when the backend only calls the link invalid`() {
+        // Not every refusal mentions expiry — a link that has already been
+        // used comes back as invalid on its own, and the answer is the same
+        // one either way.
+        assertTrue(
+            authErrorMessage("Email link is invalid").contains("Yenidən sıfırlama"),
+        )
+    }
 }
 
 class RateLimitTest {

@@ -3,6 +3,7 @@ package az.spendly.data
 import android.content.Context
 import az.spendly.domain.FinanceData
 import az.spendly.domain.emptyData
+import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -25,6 +26,13 @@ class LocalRepository(context: Context) : FinanceRepository {
     }
 
     override suspend fun save(data: FinanceData) = withContext(Dispatchers.IO) {
-        writeLock.withLock { store.write(data) }
+        writeLock.withLock {
+            // There is no server behind this one, so a file that would not
+            // write means the edit is nowhere. Saying nothing would leave it
+            // on screen looking saved until the app is next opened.
+            if (!store.write(data)) {
+                throw IOException("Cihazın yaddaşı doludur.")
+            }
+        }
     }
 }

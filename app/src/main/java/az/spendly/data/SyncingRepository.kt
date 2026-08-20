@@ -42,6 +42,17 @@ data class SyncState(
     val status: SyncStatus = SyncStatus.SYNCED,
     /** Set for [SyncStatus.FAILED], where the reason is actionable. */
     val message: String? = null,
+    /**
+     * False when the device could not keep its own copy of the last change —
+     * a full disk, storage the system will not hand over.
+     *
+     * Kept apart from [status] because it answers a different question. The
+     * status says whether the server has the change; this says whether closing
+     * the app would lose it. Both can be true at once, and the promise the app
+     * makes — that an edit is saved before anything is asked of the network —
+     * is the one this reports on.
+     */
+    val stored: Boolean = true,
 ) {
     val pending: Boolean
         get() = status == SyncStatus.PENDING || status == SyncStatus.OFFLINE
@@ -73,6 +84,13 @@ class SyncingRepository(
     /** False until a load has actually reached the server this session. */
     private var reconciled = false
 
+    /** Whether the last change reached this device's own storage. */
+    private var stored = true
+
+    private fun publish(status: SyncStatus, message: String? = null) {
+        _state.value = SyncState(status, message, stored)
+    }
+
     override suspend fun load(): FinanceData = withContext(Dispatchers.IO) {
         lock.withLock {
             val local = working.read() ?: adoptPreAccountWork() ?: emptyData
@@ -92,7 +110,9 @@ class SyncingRepository(
      */
     private fun adoptPreAccountWork(): FinanceData? {
         val carried = preAccount?.read() ?: return null
-        working.write(carried)
+        // Only hand it over once it is somewhere else; a device that cannot
+        // write must not lose the work it was carrying.
+        if (!working.write(carried)) return carried
         preAccount.clear()
         return carried
     }
@@ -100,13 +120,13 @@ class SyncingRepository(
     override suspend fun save(data: FinanceData): Unit = withContext(Dispatchers.IO) {
         lock.withLock {
             // The device first, always. Everything after this is delivery.
-            working.write(data)
+            stored = working.write(data)
 
             try {
                 if (reconciled) {
                     remote.save(data)
                     synced.write(data)
-                    _state.value = SyncState(SyncStatus.SYNCED)
+                    publish(SyncStatus.SYNCED)
                 } else {
                     // Nothing has been reconciled with the server yet this
                     // session, so pushing a diff would be against a baseline
@@ -122,10 +142,10 @@ class SyncingRepository(
     /** A write that failed is queued work when the network is the reason and
      *  a matter for a person when the server is. */
     private fun report(cause: Exception) {
-        _state.value = if (cause is SupabaseOfflineException) {
-            SyncState(SyncStatus.PENDING)
+        if (cause is SupabaseOfflineException) {
+            publish(SyncStatus.PENDING)
         } else {
-            SyncState(SyncStatus.FAILED, describeError(cause))
+            publish(SyncStatus.FAILED, describeError(cause))
         }
     }
 
@@ -135,6 +155,12 @@ class SyncingRepository(
      * to do.
      */
     suspend fun sync(): FinanceData? = withContext(Dispatchers.IO) {
+        // A store outlives the account it was made for — the ViewModel holding
+        // it stays put after a sign-out, and a network appearing still reaches
+        // it. Sending then would push one person's queued work into whoever's
+        // account is signed in by now, so it sends nothing at all.
+        if (!remote.isCurrentAccount) return@withContext null
+
         lock.withLock {
             val local = working.read() ?: return@withContext null
             reconcile(local)
@@ -150,7 +176,7 @@ class SyncingRepository(
         val remoteData = try {
             remote.load()
         } catch (offline: SupabaseOfflineException) {
-            _state.value = SyncState(
+            publish(
                 if (hasPendingWork(synced.read() ?: emptyData, local)) {
                     SyncStatus.PENDING
                 } else {
@@ -159,7 +185,7 @@ class SyncingRepository(
             )
             return null
         } catch (cause: Exception) {
-            _state.value = SyncState(SyncStatus.FAILED, describeError(cause))
+            publish(SyncStatus.FAILED, describeError(cause))
             return null
         }
 
@@ -173,9 +199,9 @@ class SyncingRepository(
 
         return try {
             if (merged != remoteData) remote.save(merged)
-            working.write(merged)
+            stored = working.write(merged)
             synced.write(merged)
-            _state.value = SyncState(SyncStatus.SYNCED)
+            publish(SyncStatus.SYNCED)
             merged
         } catch (cause: Exception) {
             // The read got through and the write did not. The merge is still
@@ -183,7 +209,7 @@ class SyncingRepository(
             // just handed over — so it is kept and the failure is reported
             // against it. Throwing it away would leave the account looking
             // empty on a device that had just been told otherwise.
-            working.write(merged)
+            stored = working.write(merged)
             report(cause)
             merged
         }

@@ -256,6 +256,38 @@ class PotTest {
     }
 
     @Test
+    fun `carries the month's planned figure across on a rename`() {
+        // The plan is keyed by pot name, the way the income plan is keyed by
+        // category name. Moving only the entries left the figure behind under
+        // a pot that no longer existed, so the screen reported it as an orphan
+        // and the pot it belonged to looked unplanned.
+        val data = savings(
+            entries = listOf(entry(id = "a", amount = 400.0)),
+            plans = listOf(SavingsPlan("2026-08", mapOf("Ehtiyat fondu" to 400.0))),
+        )
+
+        val renamed = renamePot(data, "p1", "Təhlükəsizlik yastığı")
+        assertEquals(
+            mapOf("Təhlükəsizlik yastığı" to 400.0),
+            renamed.savingsPlans[0].amounts,
+        )
+    }
+
+    @Test
+    fun `adds the planned figures together when a pot is merged into another`() {
+        val data = savings(
+            pots = listOf(SavingsPot("p1", "Ehtiyat fondu"), SavingsPot("p2", "Avtomobil")),
+            entries = listOf(entry(id = "a", amount = 400.0)),
+            plans = listOf(
+                SavingsPlan("2026-08", mapOf("Ehtiyat fondu" to 400.0, "Avtomobil" to 100.0)),
+            ),
+        )
+
+        val removed = removePot(data, "p1", "Avtomobil")
+        assertEquals(mapOf("Avtomobil" to 500.0), removed.savingsPlans[0].amounts)
+    }
+
+    @Test
     fun `refuses to delete a pot that still holds something`() {
         val data = savings(entries = listOf(entry(id = "a")))
         assertEquals(data, removePot(data, "p1"))

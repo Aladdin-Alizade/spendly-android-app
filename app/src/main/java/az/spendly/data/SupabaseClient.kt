@@ -18,6 +18,7 @@ import java.util.concurrent.TimeUnit
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -118,7 +119,7 @@ internal val supabaseJson = Json {
  *
  * The tokens are kept so a signed-in user stays signed in across restarts.
  */
-class SupabaseSession(context: Context) {
+class SupabaseSession private constructor(context: Context) {
     private val preferences =
         context.applicationContext.getSharedPreferences("spendly.supabase", Context.MODE_PRIVATE)
 
@@ -127,16 +128,35 @@ class SupabaseSession(context: Context) {
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
 
-    private var accessToken: String? = preferences.getString(KEY_ACCESS, null)
-    private var refreshToken: String? = preferences.getString(KEY_REFRESH, null)
-    private var expiresAt: Long = preferences.getLong(KEY_EXPIRES, 0L)
+    /**
+     * Written by whichever thread refreshes and read by all the others.
+     *
+     * A load asks for seven tables at once, so seven threads read these at the
+     * same moment and one of them may be replacing them. Without @Volatile the
+     * others are entitled to keep seeing the token that was just refused.
+     */
+    @Volatile private var accessToken: String? = preferences.getString(KEY_ACCESS, null)
+    @Volatile private var refreshToken: String? = preferences.getString(KEY_REFRESH, null)
+    @Volatile private var expiresAt: Long = preferences.getLong(KEY_EXPIRES, 0L)
 
     /** The signed-in user's id, or null when nobody is signed in. */
-    var userId: String? = preferences.getString(KEY_USER, null)
+    @Volatile var userId: String? = preferences.getString(KEY_USER, null)
         private set
 
-    private var email: String? = preferences.getString(KEY_EMAIL, null)
-    private var createdAt: String? = preferences.getString(KEY_CREATED, null)
+    @Volatile private var email: String? = preferences.getString(KEY_EMAIL, null)
+    @Volatile private var createdAt: String? = preferences.getString(KEY_CREATED, null)
+
+    /**
+     * Held only while a refresh is in flight, so seven parallel reads send one
+     * refresh between them rather than seven.
+     *
+     * Sending seven is not merely wasteful: they race each other over a token
+     * the server rotates as it answers, and the losers come back as
+     * `invalid_grant` — which this class reads as the session being over. That
+     * is how a signed-in person ended up at the sign-in screen for no reason
+     * they could see.
+     */
+    private val refreshLock = Any()
 
     /** Who is signed in, for the profile. Null when nobody is. */
     val account: AccountUser?
@@ -145,23 +165,36 @@ class SupabaseSession(context: Context) {
     /** True when a stored session can still be used or refreshed. */
     val isSignedIn: Boolean get() = userId != null && (accessToken != null || refreshToken != null)
 
+    /** A minute of slack, so a token does not expire mid-request. */
+    private fun usable(token: String?): Boolean =
+        token != null && expiresAt - 60 > System.currentTimeMillis() / 1000
+
     /**
      * A valid access token. Refreshes an expired one; never signs anybody in,
      * because who is signed in is the app's decision, not the transport's.
      *
-     * [force] refreshes whatever the stored expiry says. The expiry is
-     * computed from this device's clock, so a device whose clock is behind
-     * believes an expired token is still good — and then the only thing that
-     * knows better is the server refusing it. That refusal is what passes
-     * [force], and it is why a rejected call is not the end of a session.
+     * [refused] is the token the server has just rejected. The stored expiry
+     * is this device's arithmetic on this device's clock, so a device whose
+     * clock is behind believes an expired token is still good — and then the
+     * only thing that knows better is the server. Naming the rejected token
+     * rather than passing a flag is what lets a caller that waited on the lock
+     * see that somebody else has already replaced it, and use that instead of
+     * refreshing a second time.
      */
-    fun token(force: Boolean = false): String {
-        val now = System.currentTimeMillis() / 1000
+    fun token(refused: String? = null): String {
         val current = accessToken
+        if (current != null && current != refused && usable(current)) return current
 
-        // A minute of slack, so a token does not expire mid-request.
-        if (!force && current != null && expiresAt - 60 > now) return current
+        synchronized(refreshLock) {
+            // Another thread may have refreshed while this one waited.
+            val settled = accessToken
+            if (settled != null && settled != refused && usable(settled)) return settled
 
+            return refresh()
+        }
+    }
+
+    private fun refresh(): String {
         val refresh = refreshToken
             ?: throw SupabaseException("Hesaba daxil olunmayıb")
 
@@ -273,8 +306,12 @@ class SupabaseSession(context: Context) {
      * a link being pointed somewhere else.
      */
     fun sendPasswordReset(email: String) {
+        // `spendly://reset` carries a colon and two slashes, which have to be
+        // escaped to survive as one query value rather than being read as the
+        // start of something else.
+        val redirect = java.net.URLEncoder.encode(RECOVERY_LINK, "UTF-8")
         post(
-            "${SupabaseConfig.url}/auth/v1/recover?redirect_to=$RECOVERY_LINK",
+            "${SupabaseConfig.url}/auth/v1/recover?redirect_to=$redirect",
             buildJsonObject { put("email", email.trim()) },
         )
     }
@@ -403,15 +440,32 @@ class SupabaseSession(context: Context) {
             .getOrElse { throw SupabaseException("Supabase cavabı oxunmadı") }
     }
 
-    private fun execute(request: Request): String = call(http, request)
+    private fun execute(request: Request): String = call(http, request).body
 
-    private companion object {
-        const val KEY_ACCESS = "access_token"
-        const val KEY_REFRESH = "refresh_token"
-        const val KEY_EXPIRES = "expires_at"
-        const val KEY_USER = "user_id"
-        const val KEY_EMAIL = "user_email"
-        const val KEY_CREATED = "user_created_at"
+    companion object {
+        private const val KEY_ACCESS = "access_token"
+        private const val KEY_REFRESH = "refresh_token"
+        private const val KEY_EXPIRES = "expires_at"
+        private const val KEY_USER = "user_id"
+        private const val KEY_EMAIL = "user_email"
+        private const val KEY_CREATED = "user_created_at"
+
+        @Volatile private var instance: SupabaseSession? = null
+
+        /**
+         * One session for the whole process.
+         *
+         * There used to be two: one behind the sign-in screen and one behind
+         * the store, each holding its own copy of the tokens in memory while
+         * both wrote to the same preferences file. Signing out cleared one of
+         * them — the other still held what it had read at startup and wrote it
+         * back on its next refresh, so the app came back signed in as somebody
+         * who had left, on a phone somebody else may now be holding.
+         */
+        fun get(context: Context): SupabaseSession =
+            instance ?: synchronized(this) {
+                instance ?: SupabaseSession(context.applicationContext).also { instance = it }
+            }
     }
 }
 
@@ -428,53 +482,112 @@ class SupabaseRest(private val session: SupabaseSession) {
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
 
-    fun select(table: String): JsonArray {
-        val text = execute { authorised("${SupabaseConfig.url}/rest/v1/$table?select=*").get().build() }
-        return runCatching { supabaseJson.parseToJsonElement(text) as JsonArray }
-            .getOrElse { throw SupabaseException("$table: cavab oxunmadı") }
+    /**
+     * Every row of a table, in pages.
+     *
+     * PostgREST answers with at most `db-max-rows` rows and says nothing about
+     * it — Supabase ships that set to 1000. A single unpaged request therefore
+     * looked like a complete answer while quietly being the first thousand
+     * rows, and the merge then wrote that truncated picture back over the
+     * device's own copy: an account with more history than that watched a
+     * shifting subset of it appear and disappear.
+     *
+     * So the total comes from the server's own `Content-Range` rather than
+     * from the size of a page, and [order] keeps the pages from overlapping —
+     * without it PostgREST is free to answer in any order it likes and an
+     * offset means nothing.
+     */
+    fun select(table: String, order: String): JsonArray {
+        val rows = mutableListOf<JsonElement>()
+        var total: Int? = null
+
+        while (true) {
+            val url = "${SupabaseConfig.url}/rest/v1/$table" +
+                "?select=*&order=$order.asc&limit=$PAGE_ROWS&offset=${rows.size}"
+
+            val answer = execute { token ->
+                authorised(url, token)
+                    // Counting is what makes the end of the table knowable, so
+                    // it is asked for once and not on every page.
+                    .apply { if (total == null) addHeader("Prefer", "count=exact") }
+                    .get()
+                    .build()
+            }
+
+            val page = runCatching { supabaseJson.parseToJsonElement(answer.body) as JsonArray }
+                .getOrElse { throw SupabaseException("$table: cavab oxunmadı") }
+
+            if (page.isEmpty()) break
+            rows.addAll(page)
+            if (total == null) total = totalOf(answer.contentRange)
+            if (total != null && rows.size >= total!!) break
+        }
+
+        return JsonArray(rows)
     }
 
     /** Insert-or-update, keyed by the primary key unless [onConflict] names
-     *  another unique column set. */
+     *  another unique column set. Sent in batches, so a first sync of a long
+     *  history is a series of requests rather than one the server refuses. */
     fun upsert(table: String, rows: List<JsonElement>, onConflict: String? = null) {
         if (rows.isEmpty()) return
         val url = buildString {
             append("${SupabaseConfig.url}/rest/v1/$table")
             if (onConflict != null) append("?on_conflict=$onConflict")
         }
-        val body = supabaseJson.encodeToString(JsonArray.serializer(), JsonArray(rows))
-        execute {
-            authorised(url)
-                .addHeader("Prefer", "resolution=merge-duplicates,return=minimal")
-                .post(body.toRequestBody(JSON_MEDIA))
-                .build()
+
+        for (batch in rows.chunked(WRITE_ROWS)) {
+            val body = supabaseJson.encodeToString(JsonArray.serializer(), JsonArray(batch))
+            execute { token ->
+                authorised(url, token)
+                    .addHeader("Prefer", "resolution=merge-duplicates,return=minimal")
+                    .post(body.toRequestBody(JSON_MEDIA))
+                    .build()
+            }
         }
     }
 
+    /**
+     * Delete the rows whose [column] is one of [values].
+     *
+     * The list goes in the URL, so it is sent a batch at a time: an id is
+     * around forty characters once escaped, and "delete everything" on a real
+     * history built a request line long enough for the gateway to refuse it
+     * outright. Clearing an account worked for somebody with fifty rows and
+     * failed for somebody with five hundred.
+     */
     fun deleteIn(table: String, column: String, values: List<String>) {
         if (values.isEmpty()) return
-        val list = values.joinToString(",") { "\"${it.replace("\"", "\\\"")}\"" }
-        val url = "${SupabaseConfig.url}/rest/v1/$table?$column=in.(${encode(list)})"
-        execute {
-            authorised(url)
-                .addHeader("Prefer", "return=minimal")
-                .delete()
-                .build()
+
+        for (batch in values.chunked(DELETE_KEYS)) {
+            val list = batch.joinToString(",") { "\"${it.replace("\"", "\\\"")}\"" }
+            val url = "${SupabaseConfig.url}/rest/v1/$table?$column=in.(${encode(list)})"
+            execute { token ->
+                authorised(url, token)
+                    .addHeader("Prefer", "return=minimal")
+                    .delete()
+                    .build()
+            }
         }
     }
 
-    private fun authorised(url: String, force: Boolean = false): Request.Builder =
+    private fun authorised(url: String, token: String): Request.Builder =
         Request.Builder()
             .url(url)
             .addHeader("apikey", SupabaseConfig.key)
-            .addHeader("Authorization", "Bearer ${session.token(force)}")
+            .addHeader("Authorization", "Bearer $token")
             .addHeader("Content-Type", "application/json")
 
     /**
      * One call, and a second one when the first was refused over the token.
      *
-     * The request is built rather than passed in, because the retry needs a
-     * different Authorization header and a built request cannot be given one.
+     * The token is handed to [build] rather than fetched inside it, and that
+     * is the point: the retry has to use a *different* one, and when the flag
+     * saying so was the builder's own argument every call site quietly dropped
+     * it and re-sent the token the server had just rejected. Passing the token
+     * itself makes forgetting impossible, and it also tells the session which
+     * token was refused — so a caller that queued behind somebody else's
+     * refresh can use what that refresh produced instead of asking for another.
      *
      * Two refusals are handled, and they are not the same:
      *
@@ -490,17 +603,18 @@ class SupabaseRest(private val session: SupabaseSession) {
      * ended, and signing in again fixed it only because it happened to mint a
      * token while the clocks agreed.
      */
-    private fun execute(build: (force: Boolean) -> Request): String {
+    private fun execute(build: (token: String) -> Request): HttpAnswer {
+        val used = session.token()
         return try {
-            call(http, build(false))
+            call(http, build(used))
         } catch (cause: SupabaseOfflineException) {
             throw cause
         } catch (cause: SupabaseException) {
             when {
-                cause.isTokenExpired -> call(http, build(true))
+                cause.isTokenExpired -> call(http, build(session.token(refused = used)))
                 cause.isClockSkew -> {
                     Thread.sleep(CLOCK_SKEW_WAIT_MS)
-                    call(http, build(false))
+                    call(http, build(session.token()))
                 }
                 else -> throw cause
             }
@@ -510,17 +624,34 @@ class SupabaseRest(private val session: SupabaseSession) {
     private fun encode(value: String): String =
         java.net.URLEncoder.encode(value, "UTF-8").replace("+", "%20")
 
+    /** `items 0-999/2500` -> 2500. Null when the server did not say. */
+    private fun totalOf(contentRange: String?): Int? =
+        contentRange?.substringAfterLast('/')?.trim()?.toIntOrNull()
+
     private companion object {
         /** Long enough for a second or two of drift between two servers, short
          *  enough that a save still feels like a save. */
         const val CLOCK_SKEW_WAIT_MS = 1500L
+
+        /** Rows asked for per read. The server caps this as well, which is why
+         *  nothing here treats a short page as the end of the table. */
+        const val PAGE_ROWS = 1000
+
+        /** Rows written per request. */
+        const val WRITE_ROWS = 500
+
+        /** Ids per delete. These travel in the URL, which is the short one. */
+        const val DELETE_KEYS = 100
     }
 }
+
+/** A body, and the one header the paging reads. */
+private class HttpAnswer(val body: String, val contentRange: String?)
 
 /**
  * One HTTP call, with the two kinds of failure kept apart.
  */
-private fun call(http: OkHttpClient, request: Request): String {
+private fun call(http: OkHttpClient, request: Request): HttpAnswer {
     val response = try {
         http.newCall(request).execute()
     } catch (cause: IOException) {
@@ -538,7 +669,7 @@ private fun call(http: OkHttpClient, request: Request): String {
                 code = failureCode(text),
             )
         }
-        return text
+        return HttpAnswer(text, it.header("Content-Range"))
     }
 }
 
@@ -578,5 +709,12 @@ private fun describeHttpFailure(response: Response, body: String): String {
     }
 }
 
+/**
+ * The text of a primitive, or null when there is none.
+ *
+ * JSON null is asked about directly rather than by comparing the rendered
+ * text: `content` renders it as the four letters "null", which is also a
+ * perfectly ordinary thing for somebody to have typed.
+ */
 private fun JsonPrimitive.contentOrNull(): String? =
-    content.takeIf { it.isNotBlank() && it != "null" }
+    if (this is JsonNull) null else content.takeIf { it.isNotBlank() }

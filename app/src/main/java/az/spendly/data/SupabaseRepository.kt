@@ -54,8 +54,24 @@ import kotlinx.serialization.json.put
  */
 private const val BY_OWNER = "user_id,id"
 
-class SupabaseRepository(private val session: SupabaseSession) : FinanceRepository {
+class SupabaseRepository(
+    private val session: SupabaseSession,
+    /**
+     * The account this repository was built for.
+     *
+     * A store outlives the account it was made for: the ViewModel holding it
+     * stays in the activity's store after a sign-out, and its queued work goes
+     * out the next time a network appears. Without this it would go out as
+     * whoever is signed in by then — one person's rows written into another
+     * person's account, from a screen nobody is looking at.
+     */
+    private val owner: String? = null,
+) : FinanceRepository {
     private val rest = SupabaseRest(session)
+
+    /** False once somebody else is signed in, or nobody is. */
+    val isCurrentAccount: Boolean
+        get() = owner == null || owner == session.userId
 
     /** The last snapshot known to be persisted, used to diff the next one. */
     private var previous: FinanceData = emptyData
@@ -67,13 +83,15 @@ class SupabaseRepository(private val session: SupabaseSession) : FinanceReposito
         requireUser()
 
         val rows = coroutineScope {
-            val a = async { rest.select("transactions") }
-            val b = async { rest.select("budget_lines") }
-            val c = async { rest.select("income_plans") }
-            val d = async { rest.select("categories") }
-            val e = async { rest.select("savings_pots") }
-            val f = async { rest.select("savings_entries") }
-            val g = async { rest.select("savings_plans") }
+            // Ordered by the column that identifies the row, so the pages
+            // of a long table line up instead of overlapping.
+            val a = async { rest.select("transactions", "id") }
+            val b = async { rest.select("budget_lines", "id") }
+            val c = async { rest.select("income_plans", "month") }
+            val d = async { rest.select("categories", "id") }
+            val e = async { rest.select("savings_pots", "id") }
+            val f = async { rest.select("savings_entries", "id") }
+            val g = async { rest.select("savings_plans", "month") }
             Rows(a.await(), b.await(), c.await(), d.await(), e.await(), f.await(), g.await())
         }
 
@@ -223,10 +241,17 @@ class SupabaseRepository(private val session: SupabaseSession) : FinanceReposito
     /**
      * The repository never signs anyone in. The app decides who is signed in
      * and only builds this once someone is, so reaching here signed out is a
-     * bug rather than a state to recover from.
+     * bug rather than a state to recover from — and so is reaching it as
+     * somebody other than [owner], which is a store that has outlived its
+     * account still trying to write.
      */
-    private fun requireUser(): String =
-        session.userId ?: throw SupabaseException("Hesaba daxil olunmayıb")
+    private fun requireUser(): String {
+        val current = session.userId ?: throw SupabaseException("Hesaba daxil olunmayıb")
+        if (owner != null && owner != current) {
+            throw SupabaseException("Hesaba daxil olunmayıb")
+        }
+        return current
+    }
 }
 
 private data class Rows(
@@ -268,8 +293,17 @@ fun <T> changedRows(
 
 /* --- row mapping. Postgres numerics can arrive as strings. ----------- */
 
-private fun JsonObject.text(key: String): String =
-    this[key]?.jsonPrimitive?.content?.takeIf { it != "null" } ?: ""
+/**
+ * A column as text, empty when the row has nothing there.
+ *
+ * JSON null is asked about directly rather than by comparing the rendered
+ * text: `content` renders it as the four letters "null", and a note or a
+ * description that actually says "null" is somebody's writing, not an absence.
+ */
+private fun JsonObject.text(key: String): String {
+    val value = this[key]
+    return if (value == null || value is JsonNull) "" else value.jsonPrimitive.content
+}
 
 private fun JsonObject.number(key: String): Double =
     this[key]?.jsonPrimitive?.content?.toDoubleOrNull() ?: 0.0

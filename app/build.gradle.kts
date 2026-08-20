@@ -28,6 +28,9 @@ val localProperties = Properties().apply {
  */
 val keystorePath: String? = localProperties.getProperty("KEYSTORE_FILE")?.takeIf { it.isNotBlank() }
 
+val supabaseUrl: String = localProperties.getProperty("SUPABASE_URL", "").trim()
+val supabaseKey: String = localProperties.getProperty("SUPABASE_PUBLISHABLE_KEY", "").trim()
+
 android {
     namespace = "az.spendly"
     compileSdk = 36
@@ -39,16 +42,8 @@ android {
         versionCode = 4
         versionName = "1.3.0"
 
-        buildConfigField(
-            "String",
-            "SUPABASE_URL",
-            "\"${localProperties.getProperty("SUPABASE_URL", "")}\"",
-        )
-        buildConfigField(
-            "String",
-            "SUPABASE_PUBLISHABLE_KEY",
-            "\"${localProperties.getProperty("SUPABASE_PUBLISHABLE_KEY", "")}\"",
-        )
+        buildConfigField("String", "SUPABASE_URL", "\"$supabaseUrl\"")
+        buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY", "\"$supabaseKey\"")
     }
 
     signingConfigs {
@@ -93,6 +88,32 @@ android {
 
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+    }
+}
+
+/**
+ * A release built without a project is a different app.
+ *
+ * With no Supabase values the app falls back to keeping everything on the
+ * device: no sign-in, no account, nothing shared between phones. That is a
+ * perfectly good debug build and a broken release — and it is silent, so the
+ * first person to find out is whoever installs it, opens it, and finds no way
+ * to reach the data they already have.
+ *
+ * Pass -PallowLocalOnlyRelease to build one on purpose.
+ */
+tasks.configureEach {
+    if (name != "assembleRelease" && name != "bundleRelease") return@configureEach
+    doFirst {
+        val deliberate = project.hasProperty("allowLocalOnlyRelease")
+        if (!deliberate && (supabaseUrl.isEmpty() || supabaseKey.isEmpty())) {
+            error(
+                "local.properties faylında SUPABASE_URL və SUPABASE_PUBLISHABLE_KEY yoxdur. " +
+                    "Bu dəyərlər olmadan buraxılış yalnız cihaz yaddaşında işləyir — " +
+                    "giriş ekranı və hesab olmur. Bilərəkdən belə yığmaq üçün: " +
+                    "./gradlew assembleRelease -PallowLocalOnlyRelease",
+            )
+        }
     }
 }
 

@@ -489,6 +489,27 @@ private fun Chevron(glyph: String, onClick: () -> Unit) {
  * is in local state — but it is not saved, and saying nothing would let it
  * read as though it were.
  */
+/** One quiet line, with an action when there is something to retry. */
+@Composable
+private fun SyncNote(text: String, action: String? = null, onAction: () -> Unit = {}) {
+    val colors = spendlyColors
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(colors.surfaceSunken)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall,
+            color = colors.textMuted,
+            modifier = Modifier.weight(1f),
+        )
+        if (action != null) TextButton(onClick = onAction) { Text(action) }
+    }
+}
+
 @Composable
 private fun SyncBanner(sync: SyncState, onRetry: () -> Unit, onDismiss: () -> Unit) {
     val colors = spendlyColors
@@ -500,29 +521,33 @@ private fun SyncBanner(sync: SyncState, onRetry: () -> Unit, onDismiss: () -> Un
      * on its own — so it gets a quiet line and no alarm. A rejection from the
      * server is a failure, needs a person, and says which step fixes it.
      * Everything in order says nothing at all.
+     *
+     * Across all three runs a fourth thing: whether the device managed to keep
+     * its own copy. Every one of these lines used to end by promising it had,
+     * which on a full device was the one sentence in the app that was not
+     * true — and it was being said at exactly the moment it mattered most.
      */
     when (sync.status) {
-        SyncStatus.SYNCED -> return
-
-        SyncStatus.OFFLINE, SyncStatus.PENDING -> Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(colors.surfaceSunken)
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = if (sync.status == SyncStatus.PENDING) {
-                    "Dəyişikliklər cihazda saxlanılıb, sinxronizasiya gözləyir."
-                } else {
-                    "Oflayn rejim — məlumatlar cihazdan oxunur."
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = colors.textMuted,
-                modifier = Modifier.weight(1f),
+        SyncStatus.SYNCED -> {
+            if (sync.stored) return
+            SyncNote(
+                text = "Dəyişiklik serverə göndərildi, amma cihazda nüsxə " +
+                    "saxlanıla bilmədi — yaddaşda yer açın.",
             )
-            TextButton(onClick = onRetry) { Text("İndi göndər") }
         }
+
+        SyncStatus.OFFLINE, SyncStatus.PENDING -> SyncNote(
+            text = when {
+                !sync.stored ->
+                    "Dəyişiklik nə cihazda saxlanıla bildi, nə də göndərildi — " +
+                        "yaddaşda yer açın."
+                sync.status == SyncStatus.PENDING ->
+                    "Dəyişikliklər cihazda saxlanılıb, sinxronizasiya gözləyir."
+                else -> "Oflayn rejim — məlumatlar cihazdan oxunur."
+            },
+            action = "İndi göndər",
+            onAction = onRetry,
+        )
 
         SyncStatus.FAILED -> {
             val message = sync.message.orEmpty()
@@ -542,9 +567,18 @@ private fun SyncBanner(sync: SyncState, onRetry: () -> Unit, onDismiss: () -> Un
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = "Server dəyişikliyi qəbul etmədi." +
-                            (guidance?.let { " $it" } ?: "") +
-                            " Dəyişiklik cihazda saxlanılıb.",
+                        // Which failure this is decides the first sentence.
+                        // Local-only mode has no server to refuse anything, so
+                        // leading with one there would name a thing that is not
+                        // in the picture.
+                        text = if (sync.stored) {
+                            "Server dəyişikliyi qəbul etmədi." +
+                                (guidance?.let { " $it" } ?: "") +
+                                " Dəyişiklik cihazda saxlanılıb."
+                        } else {
+                            "Dəyişiklik saxlanıla bilmədi." +
+                                (guidance?.let { " $it" } ?: "")
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = colors.text,
                         modifier = Modifier.weight(1f),

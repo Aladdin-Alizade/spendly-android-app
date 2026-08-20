@@ -164,6 +164,25 @@ class MergeFinanceDataTest {
         val remote = base.copy(transactions = base.transactions + t("elsewhere"))
         assertEquals(remote, mergeFinanceData(base, base, remote))
     }
+
+    @Test
+    fun `hands the whole account back to a device that has just been reinstalled`() {
+        // Deleting the app takes the snapshots with it, so a fresh install
+        // holds nothing and has no baseline either. Nothing was deleted here —
+        // there is no baseline to have deleted it from — so every row on the
+        // server comes back untouched.
+        assertEquals(base, mergeFinanceData(FinanceData(), FinanceData(), base))
+    }
+
+    @Test
+    fun `does not resurrect what was deleted before the app was reinstalled`() {
+        // The mirror of the case above, and the one that would be a bug: a row
+        // the account no longer has must not reappear just because this device
+        // is starting from nothing.
+        val merged = mergeFinanceData(FinanceData(), FinanceData(), base)
+        assertFalse(merged.transactions.any { it.id == "gone" })
+        assertEquals(base.transactions.map { it.id }, merged.transactions.map { it.id })
+    }
 }
 
 class PendingWorkTest {
@@ -221,5 +240,68 @@ class DuplicateCategoryTest {
 
         val merged = mergeFinanceData(FinanceData(), local, FinanceData())
         assertEquals(2, merged.categories.size)
+    }
+
+    @Test
+    fun `carries the rows of the dropped spelling onto the one that survives`() {
+        // The server keeps names apart by exact spelling, the app by name
+        // regardless of case — so the two devices can each be right and still
+        // hold "ərzaq" and "Ərzaq". Dropping the definition alone left this
+        // device's transactions naming a category the picker no longer offered,
+        // and opening one of them asked for a category that could not be
+        // chosen.
+        val local = FinanceData(
+            categories = listOf(category("a", "ərzaq")),
+            transactions = listOf(
+                Transaction("t1", "2026-08-05", TransactionType.EXPENSE, "ərzaq", "Bazarlıq", 40.0),
+            ),
+            budgetLines = listOf(BudgetLine("b1", "2026-08", "Bazarlıq", "ərzaq", 300.0)),
+        )
+        val remote = FinanceData(categories = listOf(category("b", "Ərzaq")))
+
+        val merged = mergeFinanceData(FinanceData(), local, remote)
+
+        assertEquals(listOf("Ərzaq"), merged.categories.map { it.name })
+        assertEquals("Ərzaq", merged.transactions.single().category)
+        assertEquals("Ərzaq", merged.budgetLines.single().category)
+    }
+
+    @Test
+    fun `carries a planned income figure onto the surviving spelling`() {
+        val income = { id: String, name: String ->
+            az.spendly.domain.CategoryDef(id, name, TransactionType.INCOME)
+        }
+        val local = FinanceData(
+            categories = listOf(income("a", "maaş")),
+            incomePlans = listOf(IncomePlan("2026-08", mapOf("maaş" to 990.0))),
+        )
+        val remote = FinanceData(categories = listOf(income("b", "Maaş")))
+
+        val merged = mergeFinanceData(FinanceData(), local, remote)
+        assertEquals(mapOf("Maaş" to 990.0), merged.incomePlans.single().amounts)
+    }
+}
+
+class DuplicatePotTest {
+
+    @Test
+    fun `carries the entries and the plan of the dropped pot onto the survivor`() {
+        // A pot is unique by name on the server and every entry names its pot,
+        // so the same collision has the same answer — and the same duty to
+        // take everything that named the loser with it.
+        val local = FinanceData(
+            savingsPots = listOf(SavingsPot("a", "ehtiyat fondu")),
+            savingsEntries = listOf(
+                SavingsEntry("e1", "2026-08-05", "ehtiyat fondu", 400.0, SavingsDirection.IN),
+            ),
+            savingsPlans = listOf(SavingsPlan("2026-08", mapOf("ehtiyat fondu" to 400.0))),
+        )
+        val remote = FinanceData(savingsPots = listOf(SavingsPot("b", "Ehtiyat fondu")))
+
+        val merged = mergeFinanceData(FinanceData(), local, remote)
+
+        assertEquals(listOf("Ehtiyat fondu"), merged.savingsPots.map { it.name })
+        assertEquals("Ehtiyat fondu", merged.savingsEntries.single().pot)
+        assertEquals(mapOf("Ehtiyat fondu" to 400.0), merged.savingsPlans.single().amounts)
     }
 }

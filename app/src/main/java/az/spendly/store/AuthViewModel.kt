@@ -173,8 +173,12 @@ class AuthViewModel(private val session: SupabaseSession?) : ViewModel() {
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                    // One session for the whole process, shared with the
+                    // store. Two of them each held their own copy of the
+                    // tokens, and the one that had not been signed out wrote
+                    // its copy back over the other's.
                     val session = if (SupabaseConfig.isConfigured) {
-                        SupabaseSession(application)
+                        SupabaseSession.get(application)
                     } else {
                         null
                     }
