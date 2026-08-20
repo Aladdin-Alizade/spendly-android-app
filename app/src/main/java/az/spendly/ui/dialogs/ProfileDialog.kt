@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalLayoutApi::class)
+
 package az.spendly.ui.dialogs
 
 import android.content.ClipData
@@ -7,6 +9,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -48,6 +52,7 @@ import az.spendly.domain.formatAZN
 import az.spendly.domain.formatMonth
 import az.spendly.domain.knownMonths
 import az.spendly.domain.totalHoldings
+import az.spendly.ui.components.AutoGrid
 import az.spendly.ui.components.Micro
 import az.spendly.ui.theme.Radius
 import az.spendly.ui.theme.spendlyColors
@@ -202,7 +207,9 @@ fun ProfileDialog(
                     )
                 }
                 if (sync.status != SyncStatus.SYNCED) {
-                    TextButton(onClick = onSync) { Text("İndi göndər") }
+                    TextButton(onClick = onSync) {
+                        Text("İndi göndər", maxLines = 1, softWrap = false)
+                    }
                 }
             }
         }
@@ -216,18 +223,15 @@ fun ProfileDialog(
             )
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Stat("Əməliyyat", data.transactions.size.toString(), Modifier.weight(1f))
-            Stat("Xərc / gəlir", "$expenses / $income", Modifier.weight(1f))
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Stat("Kateqoriya", data.categories.size.toString(), Modifier.weight(1f))
-            Stat(
-                "Balans",
-                formatAZN(totalHoldings(data)),
-                Modifier.weight(1f),
-            )
-        }
+        AutoGrid(
+            minCellWidth = 124.dp,
+            cells = listOf(
+                { Stat("Əməliyyat", data.transactions.size.toString()) },
+                { Stat("Xərc / gəlir", "$expenses / $income") },
+                { Stat("Kateqoriya", data.categories.size.toString()) },
+                { Stat("Balans", formatAZN(totalHoldings(data))) },
+            ),
+        )
 
         if (months.isNotEmpty()) {
             Text(
@@ -297,7 +301,9 @@ private fun PasswordChange(
                     color = if (notice != null) colors.positive else colors.textMuted,
                 )
             }
-            TextButton(onClick = { open = true }) { Text("Dəyiş") }
+            TextButton(onClick = { open = true }) {
+                Text("Dəyiş", maxLines = 1, softWrap = false)
+            }
         }
         return
     }
@@ -340,9 +346,10 @@ private fun PasswordChange(
             )
         }
 
-        Row(
+        FlowRow(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End,
+            horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             TextButton(
                 onClick = {

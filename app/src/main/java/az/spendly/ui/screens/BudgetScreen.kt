@@ -2,6 +2,8 @@
  * The 'Aylıq rasxod' plan for one month, plus the planned income rows from
  * 'BÜDCƏ İCMALI'!C11:C12. Actual figures are derived, never typed.
  */
+@file:OptIn(ExperimentalLayoutApi::class)
+
 package az.spendly.ui.screens
 
 import androidx.compose.foundation.background
@@ -9,8 +11,13 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -30,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import az.spendly.domain.BudgetLine
 import az.spendly.domain.CategoryDef
@@ -138,7 +146,7 @@ fun BudgetScreen(
                     SectionHeader(title = "${formatMonth(month)} planı")
                     RowCard {
                         Column {
-                            Row(modifier = Modifier.fillMaxWidth()) {
+                            Row(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
                                 PlanCell(
                                     label = "Gəlir",
                                     value = formatAZN(summary.plannedIncome),
@@ -159,7 +167,7 @@ fun BudgetScreen(
                                 )
                             }
                             RowDivider()
-                            Row(modifier = Modifier.fillMaxWidth()) {
+                            Row(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
                                 PlanCell(
                                     label = "Yığım",
                                     value = formatAZN(summary.plannedSavings),
@@ -231,7 +239,10 @@ fun BudgetScreen(
                                     "Planlaşdırdığınız xərcləri sətir-sətir əlavə edin."
                                 },
                                 action = {
-                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    FlowRow(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
                                         if (hasPriorPlan) {
                                             Button(onClick = { onApplyTemplate(month) }) {
                                                 Text("Planı köçür")
@@ -257,10 +268,16 @@ fun BudgetScreen(
                                     .padding(horizontal = 16.dp, vertical = 9.dp),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
+                                /* Two columns of money, not three. A phone has
+                                   no room for a fourth: at four, every figure
+                                   past a few hundred manat broke across two
+                                   or three lines. The difference is the pill
+                                   under each row of İcmal → Plan və faktiki,
+                                   and the web app drops this same column once
+                                   the window is narrow. */
                                 HeadCell("Kateqoriya", Modifier.weight(1f))
-                                HeadCell("Plan", Modifier.weight(0.5f), end = true)
-                                HeadCell("Faktiki", Modifier.weight(0.5f), end = true)
-                                HeadCell("Qalıq", Modifier.weight(0.5f), end = true)
+                                HeadCell("Plan", Modifier.weight(0.62f), end = true)
+                                HeadCell("Faktiki", Modifier.weight(0.62f), end = true)
                             }
 
                             groups.forEach { group ->
@@ -277,18 +294,15 @@ fun BudgetScreen(
                                         style = MaterialTheme.typography.bodyMedium,
                                         fontWeight = FontWeight.SemiBold,
                                         color = colors.text,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.weight(1f),
                                     )
-                                    NumCell(formatAZN(group.planned), Modifier.weight(0.5f))
+                                    NumCell(formatAZN(group.planned), Modifier.weight(0.62f))
                                     NumCell(
                                         formatAZN(group.actual),
-                                        Modifier.weight(0.5f),
+                                        Modifier.weight(0.62f),
                                         color = colors.textMuted,
-                                    )
-                                    NumCell(
-                                        formatSignedAZN(group.variance),
-                                        Modifier.weight(0.5f),
-                                        color = if (group.variance < 0) colors.negative else colors.text,
                                     )
                                 }
 
@@ -310,9 +324,11 @@ fun BudgetScreen(
                                             text = line.description,
                                             style = MaterialTheme.typography.bodySmall,
                                             color = colors.textMuted,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
                                             modifier = Modifier.weight(1f),
                                         )
-                                        NumCell(formatAZN(line.planned), Modifier.weight(0.5f))
+                                        NumCell(formatAZN(line.planned), Modifier.weight(0.62f))
                                     }
                                 }
 
@@ -344,17 +360,8 @@ fun BudgetScreen(
                                     color = colors.text,
                                     modifier = Modifier.weight(1f),
                                 )
-                                NumCell(formatAZN(summary.plannedExpenses), Modifier.weight(0.5f))
-                                NumCell(formatAZN(summary.actualExpenses), Modifier.weight(0.5f))
-                                NumCell(
-                                    formatSignedAZN(summary.plannedExpenses - summary.actualExpenses),
-                                    Modifier.weight(0.5f),
-                                    color = if (summary.plannedExpenses - summary.actualExpenses < 0) {
-                                        colors.negative
-                                    } else {
-                                        colors.text
-                                    },
-                                )
+                                NumCell(formatAZN(summary.plannedExpenses), Modifier.weight(0.62f))
+                                NumCell(formatAZN(summary.actualExpenses), Modifier.weight(0.62f))
                             }
                         }
                     }
@@ -632,13 +639,14 @@ private fun PlanCell(
     }
 }
 
-/** The hairline between two cells of the plan card. */
+/** The hairline between two cells of the plan card. Takes the height of the
+ *  taller cell, which a fixed height stopped doing as soon as a figure wrapped. */
 @Composable
-private fun CellDivider() {
+private fun RowScope.CellDivider() {
     Box(
         modifier = Modifier
             .width(1.dp)
-            .height(84.dp)
+            .fillMaxHeight()
             .background(spendlyColors.border),
     )
 }
@@ -725,7 +733,7 @@ private fun DangerRow(title: String, body: String, label: String, onClick: () ->
             )
         }
         TextButton(onClick = onClick) {
-            Text(label, color = colors.negative)
+            Text(label, color = colors.negative, maxLines = 1, softWrap = false)
         }
     }
 }

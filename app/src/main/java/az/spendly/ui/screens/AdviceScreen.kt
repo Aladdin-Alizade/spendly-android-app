@@ -66,6 +66,7 @@ import az.spendly.domain.insights.spendingRigidity
 import az.spendly.domain.insights.methodsNeedingReview
 import az.spendly.domain.insights.needsReview
 import az.spendly.domain.today
+import az.spendly.ui.components.AutoGrid
 import az.spendly.ui.components.Meter
 import az.spendly.ui.components.Micro
 import az.spendly.ui.components.Panel
@@ -128,41 +129,53 @@ fun AdviceScreen(data: FinanceData, month: MonthKey, modifier: Modifier = Modifi
         /* --- budget health: figures, not a score ---------------------- */
         item {
             Panel(title = "Büdcə vəziyyəti", note = "bal deyil — hesablanmış göstəricilər") {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        Figure("Gəlir", formatAZN(health.income), Modifier.weight(1f))
-                        Figure("Xərc", formatAZN(health.expenses), Modifier.weight(1f))
-                        Figure(
-                            label = "Qalan",
-                            value = formatSignedAZN(health.remaining),
-                            modifier = Modifier.weight(1f),
-                            tone = when {
-                                health.remaining < 0 -> colors.negative
-                                health.remaining > 0 -> colors.positive
-                                else -> null
-                            },
-                        )
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        Figure(
-                            label = "Qalan pulun payı",
-                            value = health.retainedRate
-                                ?.let { "${(it * 100).roundToInt()}%" } ?: "—",
-                            modifier = Modifier.weight(1f),
-                            hint = if (health.retainedRate == null) "gəlir qeyd edilməyib" else null,
-                        )
-                        Figure(
-                            label = "Plandan fərq",
-                            value = health.planVariance
-                                ?.let { formatSignedAZN(it) } ?: "—",
-                            modifier = Modifier.weight(1f),
-                            tone = health.planVariance?.let {
-                                if (it > 0) colors.negative else colors.positive
-                            },
-                            hint = if (health.planVariance == null) "plan qurulmayıb" else null,
-                        )
-                    }
-                }
+                /* Five figures, in as many columns as fit. Held at three a
+                   sum in manat was too wide for its column and the currency
+                   mark dropped onto a line of its own — the same floor the
+                   web app puts under these. */
+                AutoGrid(
+                    minCellWidth = 124.dp,
+                    horizontalSpacing = 16.dp,
+                    verticalSpacing = 14.dp,
+                    cells = listOf(
+                        { Figure("Gəlir", formatAZN(health.income)) },
+                        { Figure("Xərc", formatAZN(health.expenses)) },
+                        {
+                            Figure(
+                                label = "Qalan",
+                                value = formatSignedAZN(health.remaining),
+                                tone = when {
+                                    health.remaining < 0 -> colors.negative
+                                    health.remaining > 0 -> colors.positive
+                                    else -> null
+                                },
+                            )
+                        },
+                        {
+                            Figure(
+                                label = "Qalan pulun payı",
+                                value = health.retainedRate
+                                    ?.let { "${(it * 100).roundToInt()}%" } ?: "—",
+                                hint = if (health.retainedRate == null) {
+                                    "gəlir qeyd edilməyib"
+                                } else {
+                                    null
+                                },
+                            )
+                        },
+                        {
+                            Figure(
+                                label = "Plandan fərq",
+                                value = health.planVariance
+                                    ?.let { formatSignedAZN(it) } ?: "—",
+                                tone = health.planVariance?.let {
+                                    if (it > 0) colors.negative else colors.positive
+                                },
+                                hint = if (health.planVariance == null) "plan qurulmayıb" else null,
+                            )
+                        },
+                    ),
+                )
 
                 health.spendingRatio?.let { ratio ->
                     Column(modifier = Modifier.padding(top = 12.dp)) {
@@ -593,11 +606,15 @@ private fun FrameworkRow(label: String, actual: Double, reference: Double, amoun
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = colors.text,
+                maxLines = 1,
+                softWrap = false,
             )
             Text(
                 text = " / ${(reference * 100).roundToInt()}%",
                 style = MaterialTheme.typography.bodySmall,
                 color = colors.textFaint,
+                maxLines = 1,
+                softWrap = false,
             )
         }
         Box(modifier = Modifier.padding(vertical = 6.dp)) {

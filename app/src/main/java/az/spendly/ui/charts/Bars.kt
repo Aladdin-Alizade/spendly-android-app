@@ -3,6 +3,8 @@
  * the weekday pattern. All four are laid out with real composables rather than
  * drawn, so text stays selectable and scales with the system font size.
  */
+@file:OptIn(ExperimentalLayoutApi::class)
+
 package az.spendly.ui.charts
 
 import androidx.compose.foundation.background
@@ -10,6 +12,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -82,6 +86,8 @@ fun RankedBars(
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = colors.text,
+                        maxLines = 1,
+                        softWrap = false,
                     )
                 }
 
@@ -93,7 +99,10 @@ fun RankedBars(
                     )
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
                     Text(
                         text = "${(row.share * 100).roundToInt()}% xərclərin payı",
                         style = MaterialTheme.typography.bodySmall,
@@ -167,11 +176,15 @@ fun PlanBars(
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = colors.text,
+                        maxLines = 1,
+                        softWrap = false,
                     )
                     Text(
                         text = " / ${formatAZN(row.planned)}",
                         style = MaterialTheme.typography.bodySmall,
                         color = colors.textFaint,
+                        maxLines = 1,
+                        softWrap = false,
                     )
                 }
 
@@ -259,6 +272,8 @@ fun IncomeBars(rows: List<IncomeSource>, modifier: Modifier = Modifier) {
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = colors.text,
+                        maxLines = 1,
+                        softWrap = false,
                     )
                 }
 
@@ -285,7 +300,10 @@ fun IncomeBars(rows: List<IncomeSource>, modifier: Modifier = Modifier) {
                     )
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
                     if (row.planned > 0) {
                         Text(
                             text = "${formatAZN(row.planned)} planlaşdırılıb",

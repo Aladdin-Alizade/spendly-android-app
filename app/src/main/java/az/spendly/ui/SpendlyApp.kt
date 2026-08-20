@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -41,7 +43,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -156,14 +160,31 @@ fun SpendlyApp(
                         selected = screen == entry,
                         onClick = { screen = entry },
                         icon = {
-                            Text(
+                            /* Five words across a phone, and the longest of
+                               them has to fit whatever text size the system is
+                               set to. Held at one size it wrapped and spilled
+                               out of the bar; the web app answers the same
+                               squeeze on a narrow window by shrinking the tab
+                               label, so this does too. */
+                            BasicText(
                                 text = entry.label,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = if (screen == entry) {
-                                    FontWeight.SemiBold
-                                } else {
-                                    FontWeight.Normal
-                                },
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    color = if (screen == entry) {
+                                        colors.accent
+                                    } else {
+                                        colors.textMuted
+                                    },
+                                    fontWeight = if (screen == entry) {
+                                        FontWeight.SemiBold
+                                    } else {
+                                        FontWeight.Normal
+                                    },
+                                ),
+                                maxLines = 1,
+                                autoSize = TextAutoSize.StepBased(
+                                    minFontSize = 9.sp,
+                                    maxFontSize = MaterialTheme.typography.bodyMedium.fontSize,
+                                ),
                             )
                         },
                         colors = NavigationBarItemDefaults.colors(
@@ -358,7 +379,12 @@ private fun TopBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
+        /* The month switcher and the account are what this bar is for, so they
+           keep their width and the wordmark gives way — the mark still says
+           whose app this is. The web app drops the wordmark outright on the
+           narrowest windows for the same reason. */
         Row(
+            modifier = Modifier.weight(1f, fill = false),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -380,6 +406,8 @@ private fun TopBar(
                 text = "Spendly",
                 style = MaterialTheme.typography.titleMedium,
                 color = colors.text,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
 
@@ -391,6 +419,8 @@ private fun TopBar(
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Medium,
                     color = colors.text,
+                    maxLines = 1,
+                    softWrap = false,
                     modifier = Modifier
                         .clip(RoundedCornerShape(Radius.xs))
                         .clickable { open = true }

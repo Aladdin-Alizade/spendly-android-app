@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -18,6 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import az.spendly.domain.CategoryRow
 import az.spendly.domain.formatAZN
@@ -92,16 +94,24 @@ fun SpendRing(
                 }
             }
 
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            /* Bounded to the hole in the middle. Left to take whatever width
+               it wanted, a six-figure sum ran out over the arc and off the
+               side of the card. */
+            Column(
+                modifier = Modifier.widthIn(max = 132.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
                 Text(
                     text = "XƏRCLƏNƏN",
                     style = MaterialTheme.typography.labelSmall,
                     color = colors.textFaint,
+                    maxLines = 1,
                 )
                 Text(
                     text = formatAZN(spent),
                     style = MaterialTheme.typography.headlineSmall,
                     color = colors.text,
+                    textAlign = TextAlign.Center,
                 )
                 Text(
                     text = if (over > 0) {
@@ -111,6 +121,7 @@ fun SpendRing(
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = if (over > 0) colors.negative else colors.textMuted,
+                    textAlign = TextAlign.Center,
                 )
             }
         }
@@ -148,6 +159,8 @@ fun SpendRing(
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.Medium,
                         color = colors.text,
+                        maxLines = 1,
+                        softWrap = false,
                     )
                 }
             }

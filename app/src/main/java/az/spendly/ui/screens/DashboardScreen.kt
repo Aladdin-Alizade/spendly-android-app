@@ -26,6 +26,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -39,7 +41,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import az.spendly.domain.CategoryRow
 import az.spendly.domain.FinanceData
 import az.spendly.domain.Insight
@@ -202,19 +207,41 @@ fun DashboardScreen(
                     color = colors.textMuted,
                 )
 
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                /* Five ranges share the width evenly instead of being laid out
+                   at whatever width each word wants — at their own widths the
+                   last one ran off the side of the screen and could not be
+                   tapped. The web app gives them `flex: 1` on a phone for the
+                   same reason. */
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
                     for (option in PERIODS) {
                         val selected = option.id == periodId
-                        Text(
+                        BasicText(
                             text = option.short,
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                            color = if (selected) colors.onAccent else colors.textMuted,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = if (selected) colors.onAccent else colors.textMuted,
+                                fontWeight = if (selected) {
+                                    FontWeight.SemiBold
+                                } else {
+                                    FontWeight.Normal
+                                },
+                                textAlign = TextAlign.Center,
+                            ),
+                            maxLines = 1,
+                            // The longest of the five decides the size, so none
+                            // of them is cut off inside its own chip.
+                            autoSize = TextAutoSize.StepBased(
+                                minFontSize = 9.sp,
+                                maxFontSize = MaterialTheme.typography.bodySmall.fontSize,
+                            ),
                             modifier = Modifier
+                                .weight(1f)
                                 .clip(RoundedCornerShape(Radius.xs))
                                 .background(if (selected) colors.accent else colors.surface)
                                 .clickable { periodId = option.id }
-                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                                .padding(horizontal = 4.dp, vertical = 6.dp),
                         )
                     }
                 }
@@ -289,18 +316,21 @@ fun DashboardScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         Text(
                             text = "planlaşdırılan ${formatAZN(summary.plannedExpenses)} məbləğdən",
                             style = MaterialTheme.typography.bodySmall,
                             color = colors.textMuted,
+                            modifier = Modifier.weight(1f),
                         )
                         Text(
                             text = "${formatSignedAZN(budgetLeft)} qalıq",
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.SemiBold,
                             color = if (budgetLeft < 0) colors.negative else colors.text,
+                            maxLines = 1,
+                            softWrap = false,
                         )
                     }
                 }
@@ -349,14 +379,16 @@ fun DashboardScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Micro("Qalan")
                         Text(
                             text = formatSignedAZN(summary.remainder),
                             style = MaterialTheme.typography.headlineSmall,
+                            maxLines = 1,
+                            softWrap = false,
                             color = when {
                                 summary.remainder < 0 -> colors.negative
                                 summary.remainder > 0 -> colors.positive
@@ -493,11 +525,14 @@ fun DashboardScreen(
                         }
                     }
 
-                    Row(
+                    /* Stacked, not side by side: half a phone's width is not
+                       enough for a sum in manat with a sentence under it, and
+                       the web app stacks these on a phone too. */
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
                         SplitLegend(
                             label = "Gözlənilən",
@@ -505,7 +540,6 @@ fun DashboardScreen(
                             note = "Planla əhatə olunub",
                             color = colors.series[0],
                             valueColor = colors.text,
-                            modifier = Modifier.weight(1f),
                         )
                         SplitLegend(
                             label = "Gözlənilməz",
@@ -513,7 +547,6 @@ fun DashboardScreen(
                             note = "Plandan artıq və ya planlaşdırılmamış",
                             color = colors.negative,
                             valueColor = if (split.unexpected > 0) colors.negative else colors.text,
-                            modifier = Modifier.weight(1f),
                         )
                     }
 
@@ -587,17 +620,20 @@ fun DashboardScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(top = 10.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
                             Text(
                                 text = if (pace.complete) "Ay üzrə cəmi" else "Bu templə ayın sonuna",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = colors.textMuted,
+                                modifier = Modifier.weight(1f),
                             )
                             Text(
                                 text = formatAZN(pace.atThisRate),
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                softWrap = false,
                                 color = if (pace.atThisRate > pace.planned) {
                                     colors.negative
                                 } else {
@@ -666,11 +702,16 @@ fun DashboardScreen(
                             MoneyRow(
                                 title = item.description,
                                 meta = item.category,
-                                amount = (if (item.matched.isNotEmpty()) {
+                                // What was planned is left off the amount here.
+                                // A description, a status mark and two sums on
+                                // one row is one thing too many for a phone,
+                                // and the planned figure is on the Büdcə
+                                // screen — the web app drops it here as well.
+                                amount = if (item.matched.isNotEmpty()) {
                                     formatAZN(item.actual)
                                 } else {
                                     "—"
-                                }) + " / ${formatAZN(item.planned)}",
+                                },
                                 trailing = {
                                     Pill(
                                         text = if (item.matched.isNotEmpty()) {
@@ -828,18 +869,23 @@ private fun CashflowRow(
     Column(modifier = Modifier.padding(bottom = 12.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(
                 text = label,
                 style = MaterialTheme.typography.bodySmall,
                 color = colors.textMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
             )
             Text(
                 text = formatAZN(value),
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = colors.text,
+                maxLines = 1,
+                softWrap = false,
             )
         }
         Box(modifier = Modifier.padding(vertical = 6.dp)) {
@@ -853,8 +899,16 @@ private fun CashflowRow(
     }
 }
 
-/** One line of the period-over-period comparison: now, before, and the move
- *  between them. [invert] is for figures where up is the unwelcome direction. */
+/**
+ * One line of the period-over-period comparison: now and the move against
+ * before. [invert] is for figures where up is the unwelcome direction.
+ *
+ * The earlier figure itself is not on the line. Four columns of money do not
+ * fit the width of a phone: the label was squeezed to a letter a line and the
+ * move became a blob. The move is the thing this panel is for, and it carries
+ * the comparison on its own — which is why the web app drops the same column
+ * once the window is phone-width.
+ */
 @Composable
 private fun CompareRow(
     label: String,
@@ -886,6 +940,8 @@ private fun CompareRow(
             text = label,
             style = MaterialTheme.typography.bodySmall,
             color = colors.textMuted,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
         Text(
@@ -893,11 +949,8 @@ private fun CompareRow(
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.SemiBold,
             color = colors.text,
-        )
-        Text(
-            text = format(before),
-            style = MaterialTheme.typography.bodySmall,
-            color = colors.textFaint,
+            maxLines = 1,
+            softWrap = false,
         )
         if (move == 0.0) {
             Pill("—")
@@ -923,18 +976,23 @@ private fun PlanFigure(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 5.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Text(
             text = label,
             style = MaterialTheme.typography.bodySmall,
             color = colors.textMuted,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
         )
         Text(
             text = value,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = if (strong) FontWeight.SemiBold else FontWeight.Medium,
             color = valueColor ?: colors.text,
+            maxLines = 1,
+            softWrap = false,
         )
     }
 }

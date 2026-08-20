@@ -6,12 +6,16 @@
  * kind of expense — and the three totals at the top are what that distinction
  * looks like: what can be spent, what is put away, and the two together.
  */
+@file:OptIn(ExperimentalLayoutApi::class)
+
 package az.spendly.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -32,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import az.spendly.domain.FinanceData
 import az.spendly.domain.MonthKey
@@ -52,6 +57,7 @@ import az.spendly.domain.potRows
 import az.spendly.domain.savingsBalance
 import az.spendly.domain.spendableBalance
 import az.spendly.domain.totalHoldings
+import az.spendly.ui.components.AutoGrid
 import az.spendly.ui.components.EmptyState
 import az.spendly.ui.components.Meter
 import az.spendly.ui.components.Micro
@@ -147,29 +153,37 @@ fun SavingsScreen(
             Column {
                 SectionHeader(title = "Harada dayanırsınız")
                 RowCard {
-                    Row(
+                    /* Three across a phone left each figure too narrow for a
+                       sum in manat and dropped the currency mark onto a line
+                       of its own, so they take as many columns as they fit
+                       in. */
+                    AutoGrid(
+                        minCellWidth = 124.dp,
                         modifier = Modifier.padding(16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        Holding(
-                            label = "Xərcləyə bilən",
-                            value = formatAZN(spendable),
-                            tone = if (spendable < 0) colors.negative else colors.text,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Holding(
-                            label = "Yığım",
-                            value = formatAZN(saved),
-                            tone = colors.text,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Holding(
-                            label = "Cəmi",
-                            value = formatAZN(total),
-                            tone = if (total < 0) colors.negative else colors.accent,
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
+                        cells = listOf(
+                            {
+                                Holding(
+                                    label = "Xərcləyə bilən",
+                                    value = formatAZN(spendable),
+                                    tone = if (spendable < 0) colors.negative else colors.text,
+                                )
+                            },
+                            {
+                                Holding(
+                                    label = "Yığım",
+                                    value = formatAZN(saved),
+                                    tone = colors.text,
+                                )
+                            },
+                            {
+                                Holding(
+                                    label = "Cəmi",
+                                    value = formatAZN(total),
+                                    tone = if (total < 0) colors.negative else colors.accent,
+                                )
+                            },
+                        ),
+                    )
                 }
                 Text(
                     text = "${formatMonth(month)}: gəlirdən ${formatAZN(fromIncome)} kənara " +
@@ -190,12 +204,20 @@ fun SavingsScreen(
                 SectionHeader(
                     title = "Qablar",
                     action = {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        // Two buttons that wrap rather than squeeze: at a large
+                        // text size they did not fit one line beside the
+                        // heading, and the second one broke across two.
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
                             OutlinedButton(onClick = { addingPot = true }) {
-                                Text("Qab əlavə et")
+                                Text("Qab əlavə et", maxLines = 1, softWrap = false)
                             }
                             if (rows.isNotEmpty()) {
-                                Button(onClick = { openEntry(null) }) { Text("Qoy / götür") }
+                                Button(onClick = { openEntry(null) }) {
+                                    Text("Qoy / götür", maxLines = 1, softWrap = false)
+                                }
                             }
                         }
                     },
@@ -360,6 +382,8 @@ private fun Pot(row: PotRow, onEdit: () -> Unit, onMove: () -> Unit) {
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = colors.text,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
                 if (row.orphaned) {
@@ -377,6 +401,8 @@ private fun Pot(row: PotRow, onEdit: () -> Unit, onMove: () -> Unit) {
                     text = formatAZN(row.balance),
                     style = MaterialTheme.typography.titleMedium,
                     color = colors.text,
+                    maxLines = 1,
+                    softWrap = false,
                 )
             }
 

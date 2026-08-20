@@ -5,6 +5,8 @@
  * and someone who mistook one for the other should not have to navigate to
  * fix it.
  */
+@file:OptIn(ExperimentalLayoutApi::class)
+
 package az.spendly.ui
 
 import androidx.compose.foundation.background
@@ -12,6 +14,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -255,10 +259,12 @@ fun AuthScreen(
                 )
             }
 
-            Row(
+            // A question and the answer that switches mode. Held to one line
+            // the answer was crushed at large text sizes, so it wraps under.
+            FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically,
+                itemVerticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
                     text = if (mode == AuthMode.SIGN_IN) "Hesabınız yoxdur?" else "Hesabınız var?",
