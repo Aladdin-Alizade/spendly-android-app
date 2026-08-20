@@ -8,6 +8,10 @@
  */
 package az.spendly
 
+import az.spendly.data.SYNCED_SNAPSHOT
+import az.spendly.data.WORKING_SNAPSHOT
+import az.spendly.data.syncedSnapshot
+import az.spendly.data.workingSnapshot
 import az.spendly.domain.CategoryDef
 import az.spendly.domain.FinanceData
 import az.spendly.domain.IncomePlan
@@ -24,6 +28,7 @@ import az.spendly.domain.normaliseData
 import az.spendly.domain.plannedSavings
 import az.spendly.domain.savingsBalance
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -115,5 +120,41 @@ class StoredSnapshotTest {
             categories = listOf(CategoryDef("c1", "Kirayə", TransactionType.EXPENSE)),
         )
         assertEquals(stored.categories, normaliseData(stored).categories)
+    }
+}
+
+/**
+ * Which file a snapshot goes in.
+ *
+ * This used to be one file per install, which meant it was shared by every
+ * account that ever signed in on it — and the sync treats whatever the file
+ * holds as work this device has not sent yet. So signing in handed the
+ * previous occupant's rows to the new account and uploaded them as its own.
+ */
+class SnapshotScopeTest {
+
+    @Test
+    fun `two accounts on one device do not share a snapshot`() {
+        val one = workingSnapshot("11111111-1111-1111-1111-111111111111")
+        val two = workingSnapshot("22222222-2222-2222-2222-222222222222")
+
+        assertNotEquals(one, two)
+        assertNotEquals(one, WORKING_SNAPSHOT)
+        assertNotEquals(syncedSnapshot("11111111-1111-1111-1111-111111111111"), one)
+    }
+
+    @Test
+    fun `an account's working and synced snapshots are different files`() {
+        val user = "11111111-1111-1111-1111-111111111111"
+        assertNotEquals(workingSnapshot(user), syncedSnapshot(user))
+    }
+
+    @Test
+    fun `with no account the device keeps the plain names`() {
+        // Local-storage mode has nobody to scope to, and an install that has
+        // never signed in has to keep writing where it already writes.
+        assertEquals(WORKING_SNAPSHOT, workingSnapshot(null))
+        assertEquals(WORKING_SNAPSHOT, workingSnapshot(""))
+        assertEquals(SYNCED_SNAPSHOT, syncedSnapshot(null))
     }
 }

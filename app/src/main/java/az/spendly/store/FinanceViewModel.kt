@@ -404,9 +404,14 @@ class FinanceViewModel(
                     // so this is the same account either way. The device's own
                     // snapshot is still the working copy — the account decides
                     // where the data belongs, not whether it is saved.
-                    val remote = SupabaseRepository(SupabaseSession(application))
+                    val session = SupabaseSession(application)
+                    val remote = SupabaseRepository(session)
                     return FinanceViewModel(
-                        repository = SyncingRepository(application, remote),
+                        // The snapshots belong to the account, not to the
+                        // install: one file per account is what stops one
+                        // account's rows being handed to the next one to sign
+                        // in here and uploaded as its own.
+                        repository = SyncingRepository(application, remote, session.userId),
                         network = NetworkMonitor(application),
                     ) as T
                 }

@@ -50,10 +50,20 @@ data class SyncState(
 class SyncingRepository(
     context: Context,
     private val remote: SupabaseRepository,
+    /** Whose snapshots these are. Null only in the modes that have no account. */
+    userId: String? = null,
 ) : FinanceRepository {
 
-    private val working = SnapshotStore(context, WORKING_SNAPSHOT)
-    private val synced = SnapshotStore(context, SYNCED_SNAPSHOT)
+    private val working = SnapshotStore(context, workingSnapshot(userId))
+    private val synced = SnapshotStore(context, syncedSnapshot(userId))
+
+    /** What the install held before it had an account, if it still does. */
+    private val preAccount =
+        if (workingSnapshot(userId) == WORKING_SNAPSHOT) {
+            null
+        } else {
+            SnapshotStore(context, WORKING_SNAPSHOT)
+        }
 
     private val _state = MutableStateFlow(SyncState())
     val state: StateFlow<SyncState> = _state.asStateFlow()
@@ -65,9 +75,26 @@ class SyncingRepository(
 
     override suspend fun load(): FinanceData = withContext(Dispatchers.IO) {
         lock.withLock {
-            val local = working.read() ?: emptyData
+            val local = working.read() ?: adoptPreAccountWork() ?: emptyData
             reconcile(local) ?: local
         }
+    }
+
+    /**
+     * Work entered before there was an account to put it in.
+     *
+     * It is taken over once, by the first account to sign in on this install,
+     * and the file is removed as it is taken — so the second account to sign in
+     * here inherits nothing. That distinction is the whole point: carrying
+     * somebody's pre-account work forward is a feature, and handing it to
+     * whoever signs in next is how records nobody wrote end up in an account
+     * and, from there, in every total it computes.
+     */
+    private fun adoptPreAccountWork(): FinanceData? {
+        val carried = preAccount?.read() ?: return null
+        working.write(carried)
+        preAccount.clear()
+        return carried
     }
 
     override suspend fun save(data: FinanceData): Unit = withContext(Dispatchers.IO) {

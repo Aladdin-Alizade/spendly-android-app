@@ -52,9 +52,32 @@ class SnapshotStore(context: Context, private val fileName: String) {
     }
 }
 
-/** The working copy — what the app reads and writes, online or not. */
+/**
+ * The working copy — what the app reads and writes, online or not.
+ *
+ * This bare name belongs to the device rather than to any account: it is what
+ * local-storage mode uses, and what an install held before it had an account.
+ * A signed-in account gets its own file, from [workingSnapshot].
+ */
 const val WORKING_SNAPSHOT = "spendly.data.v1.json"
 
 /** The last snapshot known to be on the server, used to tell this device's
  *  unsent work from rows it simply has not seen yet. */
 const val SYNCED_SNAPSHOT = "spendly.synced.v1.json"
+
+/**
+ * One account, one file.
+ *
+ * These used to be one file per install, shared by every account that ever
+ * signed in on it — and the sync treats whatever the file holds as work this
+ * device has not sent yet. So signing in handed the previous occupant's rows
+ * to the new account and uploaded them, and after that they belonged to it:
+ * records its owner never entered, in their totals, on every device they own.
+ *
+ * The id is a UUID, so it is safe in a file name.
+ */
+fun workingSnapshot(userId: String?): String =
+    if (userId.isNullOrBlank()) WORKING_SNAPSHOT else "spendly.data.v1.$userId.json"
+
+fun syncedSnapshot(userId: String?): String =
+    if (userId.isNullOrBlank()) SYNCED_SNAPSHOT else "spendly.synced.v1.$userId.json"
