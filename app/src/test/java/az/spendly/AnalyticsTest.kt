@@ -525,7 +525,9 @@ class InsightTest {
             ),
         )
         val top = insights(sample, month).first { it.id == "top-category" }
-        assertTrue(top.text.contains("əvvəlki dövrdə"))
+        // The panel's own note says which period "before" is, so the line only
+        // has to name the category that used to lead.
+        assertTrue(top.text.contains("əvvəl"))
         assertTrue(top.text.contains("Ərzaq"))
     }
 }

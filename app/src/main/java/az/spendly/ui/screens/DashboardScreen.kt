@@ -450,7 +450,9 @@ fun DashboardScreen(
         /* --- what changed ---------------------------------------------- */
         if (facts.isNotEmpty()) {
             item {
-                Panel(title = "Nə dəyişdi") {
+                // The note carries the comparison for every line under it, so
+                // none of them has to repeat which period it is measured against.
+                Panel(title = "Nə dəyişdi", note = comparisonLabel(period)) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         facts.forEach { InsightLine(it) }
                     }

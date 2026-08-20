@@ -195,43 +195,47 @@ fun AdviceScreen(data: FinanceData, month: MonthKey, modifier: Modifier = Modifi
             }
         }
 
-        /* --- what the figures say, before the frameworks that need them -- */
+        /* --- what the figures say, before the frameworks that need them --
+           With nothing to report this used to be four panels in a row that all
+           said nothing to report: one saying so, and one per bucket saying so
+           again in its own words. One says it now, and the empty buckets stay
+           away until there is something to put in them. */
         if (nothing) {
             item {
                 Panel(title = "Müşahidə yoxdur") {
                     Text(
-                        text = "Bu ay üçün rəqəmlərin təsdiqlədiyi müşahidə yoxdur. " +
-                            "Əməliyyat və plan əlavə etdikcə burada müşahidələr görünəcək.",
+                        text = "Bir neçə əməliyyat və bir plan kifayətdir — " +
+                            "rəqəmlər yığıldıqca bu səhifə doldurulacaq.",
                         style = MaterialTheme.typography.bodySmall,
                         color = colors.textMuted,
                     )
                 }
             }
-        }
-
-        item {
-            Bucket(
-                title = "Diqqət tələb edir",
-                priority = AdvicePriority.ATTENTION,
-                items = report.attention,
-                empty = "Diqqət tələb edən hal aşkarlanmadı.",
-            )
-        }
-        item {
-            Bucket(
-                title = "Yaxşı gedir",
-                priority = AdvicePriority.GOOD,
-                items = report.good,
-                empty = "Bu ay üçün müsbət müşahidə yoxdur.",
-            )
-        }
-        item {
-            Bucket(
-                title = "Nəzərdən keçirməyə dəyər",
-                priority = AdvicePriority.REVIEW,
-                items = report.review,
-                empty = "Nəzərdən keçirilməli hal yoxdur.",
-            )
+        } else {
+            item {
+                Bucket(
+                    title = "Diqqət tələb edir",
+                    priority = AdvicePriority.ATTENTION,
+                    items = report.attention,
+                    empty = "Diqqət tələb edən hal aşkarlanmadı.",
+                )
+            }
+            item {
+                Bucket(
+                    title = "Yaxşı gedir",
+                    priority = AdvicePriority.GOOD,
+                    items = report.good,
+                    empty = "Bu ay üçün müsbət müşahidə yoxdur.",
+                )
+            }
+            item {
+                Bucket(
+                    title = "Nəzərdən keçirməyə dəyər",
+                    priority = AdvicePriority.REVIEW,
+                    items = report.review,
+                    empty = "Nəzərdən keçirilməli hal yoxdur.",
+                )
+            }
         }
 
         /* --- what the spending is for -------------------------------- */
@@ -348,17 +352,19 @@ fun AdviceScreen(data: FinanceData, month: MonthKey, modifier: Modifier = Modifi
                     )
                     FrameworkReading(framework)
 
-                    FrameworkNote(
-                        "CFPB bunu bir neçə büdcə qaydasından biri kimi öyrədir — hamıya " +
-                            "uyğun gəlmir. Borc ödənişləri «zəruri» tərəfdə sayılır.",
-                    )
+                    // That this is a reference and not a rule is the panel's
+                    // own note, and the source is in Metodologiya. What is left
+                    // is the part neither of them says.
+                    FrameworkNote("Borc ödənişləri «zəruri» tərəfdə sayılır.")
                 } else {
                     Missing(
                         split = split,
-                        extra = if (split.total > 0 && split.hasCoverage) {
-                            "Bu ay gəlir qeyd edilməyib."
-                        } else {
-                            null
+                        full = false,
+                        extra = when {
+                            split.total <= 0 -> "Xərc qeyd edildikcə paylar hesablanacaq."
+                            !split.hasCoverage ->
+                                "Paylar yuxarıdakı təsnifat tamamlanandan sonra çıxır."
+                            else -> "Bu ay gəlir qeyd edilməyib."
                         },
                     )
                 }
@@ -463,43 +469,56 @@ fun AdviceScreen(data: FinanceData, month: MonthKey, modifier: Modifier = Modifi
                         },
                     )
 
+                    // The 3 / 6 / 12 chooser above already says the number is
+                    // yours to pick, so the note keeps to what is not visible:
+                    // where the progress figure comes from.
                     FrameworkNote(
-                        "CFPB vahid rəqəm vermir — məbləğ vəziyyətinizdən asılıdır." +
-                            if (pace != null && pace.saved > 0) {
-                                " İrəliləyiş yığım qablarınızın cəminə görə hesablanır; " +
-                                    "tətbiq bank hesablarınızı görmür."
-                            } else {
-                                " Yığım qablarınıza qoyduğunuz məbləğlər burada irəliləyiş " +
-                                    "kimi görünəcək."
-                            },
+                        if (pace != null && pace.saved > 0) {
+                            "İrəliləyiş yığım qablarınızın cəminə görə hesablanır; " +
+                                "tətbiq bank hesablarınızı görmür."
+                        } else {
+                            "Yığım qablarınıza qoyduğunuz məbləğlər burada irəliləyiş " +
+                                "kimi görünəcək."
+                        },
                     )
                 } else {
                     Missing(
                         split = split,
-                        extra = "Hesablama üçün ən azı 3 ayın təsnif edilmiş xərci lazımdır.",
+                        full = false,
+                        extra = "Median üçün ən azı 3 ayın təsnif edilmiş xərci lazımdır.",
                     )
                 }
             }
         }
 
-        /* --- what could not be said, and why -------------------------- */
-        if (report.unavailable.isNotEmpty()) {
+        /* --- what could not be said, and why --------------------------
+           Grouped by method, because two rules can rest on one of them: with
+           no plan at all, "Plan və faktiki fərqi" was listed twice, once per
+           rule, and a list that names the same thing twice reads as a bug in
+           the list rather than as two facts. */
+        val unavailable = report.unavailable
+            .groupBy { it.method }
+            .map { (method, entries) ->
+                METHODS[method]?.name.orEmpty() to
+                    entries.map { it.reason }.distinct().joinToString(" · ")
+            }
+        if (unavailable.isNotEmpty()) {
             item {
                 Panel(
                     title = "Hələ hesablana bilməyənlər",
-                    note = report.unavailable.size.toString(),
+                    note = unavailable.size.toString(),
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        report.unavailable.forEach { entry ->
+                        unavailable.forEach { (name, reason) ->
                             Column {
                                 Text(
-                                    text = METHODS[entry.method]?.name.orEmpty(),
+                                    text = name,
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Medium,
                                     color = colors.text,
                                 )
                                 Text(
-                                    text = entry.reason,
+                                    text = reason,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = colors.textMuted,
                                 )
@@ -537,22 +556,30 @@ private fun kindColor(kind: CategoryKind): Color = when (kind) {
  * missing. Telling somebody who has classified everything that they need to
  * classify 90% of it sends them to do work that will not help — the real
  * reason is in `extra`.
+ *
+ * [full] is true for the first panel on the screen that has to say this and
+ * false for the ones under it. Three panels can be waiting on one unfinished
+ * classification, and three copies of the same paragraph and the same list of
+ * category names down one screen is not three times as useful as one. The
+ * panels below say only what is theirs to say.
  */
 @Composable
-private fun Missing(split: SpendingSplit, extra: String? = null) {
+private fun Missing(split: SpendingSplit, extra: String? = null, full: Boolean = true) {
     val colors = spendlyColors
 
     if (split.total <= 0) {
-        Text(
-            text = "Bu ay üçün xərc qeydə alınmayıb.",
-            style = MaterialTheme.typography.bodySmall,
-            color = colors.textMuted,
-        )
+        if (full || extra != null) {
+            Text(
+                text = extra ?: "Bu ay üçün xərc qeydə alınmayıb.",
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textMuted,
+            )
+        }
         return
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (!split.hasCoverage) {
+        if (full && !split.hasCoverage) {
             Text(
                 text = "Xərclərin ${(split.coverage * 100).roundToInt()}%-i təsnif edilib — " +
                     "hesablama üçün ən azı " +
@@ -568,7 +595,7 @@ private fun Missing(split: SpendingSplit, extra: String? = null) {
                     color = colors.text,
                 )
                 Text(
-                    text = "Büdcə → Kateqoriyalar bölməsində hər birinin növünü seçin.",
+                    text = "Büdcə → Quraşdırma → Kateqoriyalar bölməsində hər birinin növünü seçin.",
                     style = MaterialTheme.typography.bodySmall,
                     color = colors.textFaint,
                 )

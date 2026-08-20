@@ -196,7 +196,7 @@ fun ProfileDialog(
                             SyncStatus.PENDING -> "Cihazda gözləyən dəyişiklik var"
                             SyncStatus.OFFLINE -> "Oflayn — serverə çıxış yoxdur"
                             SyncStatus.FAILED -> sync.message?.takeIf { it.isNotBlank() }
-                                ?: "Server dəyişikliyi qəbul etmədi"
+                                ?: "Son dəyişiklik göndərilmədi"
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = when (sync.status) {

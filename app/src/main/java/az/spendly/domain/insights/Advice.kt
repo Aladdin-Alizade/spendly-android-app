@@ -172,7 +172,9 @@ private fun signed(ratio: Double): String = "${(ratio * 100).roundToInt()}%"
 private val overspent: Rule = { context ->
     val health = context.health
     if (health.spendingRatio == null) {
-        context.skip(Unavailable(MethodId.SPENDING_RATIO, "Bu ay gəlir qeyd edilməyib"))
+        context.skip(
+            Unavailable(MethodId.SPENDING_RATIO, "Nisbəti çıxarmaq üçün gəlir lazımdır"),
+        )
     } else if (health.remaining < 0) {
         context.add(
             Advice(
@@ -536,7 +538,9 @@ private val unexpected: Rule = { context ->
 private val recurringBurden: Rule = { context ->
     val health = context.health
     if (health.income <= 0) {
-        context.skip(Unavailable(MethodId.RECURRING, "Bu ay gəlir qeyd edilməyib"))
+        context.skip(
+            Unavailable(MethodId.RECURRING, "Öhdəliklərin payı üçün gəlir lazımdır"),
+        )
     } else {
         val previous = shiftMonth(context.month, -1)
         val earlier = context.data.budgetLines

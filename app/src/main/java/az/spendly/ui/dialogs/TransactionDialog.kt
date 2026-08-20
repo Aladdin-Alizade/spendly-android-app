@@ -171,7 +171,7 @@ fun TransactionDialog(
         if (options.isEmpty()) {
             Text(
                 text = (if (input.type == TransactionType.INCOME) "Gəlir" else "Xərc") +
-                    " kateqoriyası hələ yoxdur. Büdcə səhifəsində Kateqoriyalar " +
+                    " kateqoriyası hələ yoxdur. Büdcə → Quraşdırma → Kateqoriyalar " +
                     "bölməsindən əlavə edin.",
                 style = MaterialTheme.typography.bodySmall,
                 color = spendlyColors.textMuted,
@@ -186,7 +186,7 @@ fun TransactionDialog(
         )
 
         LabelledField(
-            label = "Qeyd · seçimli",
+            label = "Qeyd · istəyə bağlı",
             value = input.note,
             onValueChange = { input = input.copy(note = it) },
         )

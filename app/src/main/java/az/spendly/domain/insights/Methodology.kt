@@ -151,8 +151,10 @@ val METHODS: Map<MethodId, Methodology> = mapOf(
     ),
     MethodId.NEEDS_WANTS to Methodology(
         name = "Ehtiyac və istək",
-        note = "Xərcin zəruri və istəyə bağlı hissələrə ayrılması. Bölgü mühakimə deyil — " +
-            "hansı kateqoriyanın hansı olduğunu siz təyin edirsiniz.",
+        // That the split is the user's own call is said on the panel itself,
+        // where the categories are; here it only has to say what the method is.
+        note = "Xərcin zəruri və istəyə bağlı hissələrə ayrılması, kateqoriyalara " +
+            "verdiyiniz növlərə görə.",
         source = "CFPB — Budgeting for needs and wants",
         url = "https://www.consumerfinance.gov/consumer-tools/educator-tools/" +
             "youth-financial-education/teach/activities/budgeting-needs-and-wants/",

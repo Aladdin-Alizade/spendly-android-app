@@ -185,12 +185,21 @@ fun SavingsScreen(
                         ),
                     )
                 }
+                /* The rule about outside money is only worth a paragraph on a
+                   month that has some. Printed unconditionally it was a lesson
+                   re-read on every visit by people it never applied to; the
+                   dialog that records a deposit explains it where the choice
+                   is actually made. */
                 Text(
                     text = "${formatMonth(month)}: gəlirdən ${formatAZN(fromIncome)} kənara " +
                         "qoyulub" +
-                        (if (fromOutside > 0) ", kənardan ${formatAZN(fromOutside)} gəlib" else "") +
-                        ". Kənardan gələn pul gəlir hesabatlarınıza düşmür — o, heç vaxt " +
-                        "xərcləyə biləcəyiniz tərəfdə olmayıb.",
+                        if (fromOutside > 0) {
+                            ", kənardan ${formatAZN(fromOutside)} gəlib. Kənardan gələn " +
+                                "pul gəlir hesabatlarınıza düşmür — o, heç vaxt xərcləyə " +
+                                "biləcəyiniz tərəfdə olmayıb."
+                        } else {
+                            "."
+                        },
                     style = MaterialTheme.typography.bodySmall,
                     color = colors.textFaint,
                     modifier = Modifier.padding(top = 8.dp),

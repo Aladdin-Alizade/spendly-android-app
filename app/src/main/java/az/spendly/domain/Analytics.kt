@@ -391,6 +391,10 @@ private const val MATERIAL_AMOUNT = 5.0
  *
  * Sentences are impersonal ("qalıb", not "saxladınız") so the app reports on
  * the money rather than addressing the person spending it.
+ *
+ * None of them names the period being compared against, either. Four lines of
+ * one panel each ending "əvvəlki dövrə nisbətən" is the same clause read four
+ * times; the panel says it once, above them.
  */
 fun insights(data: FinanceData, period: Period): List<Insight> {
     val previous = previousPeriod(period)
@@ -430,8 +434,8 @@ fun insights(data: FinanceData, period: Period): List<Insight> {
             result.add(
                 Insight(
                     id = "spend-change",
-                    text = "Ümumi xərclər əvvəlki dövrə nisbətən ${percent(abs(ratio))} " +
-                        (if (ratio > 0) "çoxdur" else "azdır") + ".",
+                    text = "Ümumi xərclər ${percent(abs(ratio))} " +
+                        (if (ratio > 0) "artıb" else "azalıb") + ".",
                     tone = if (ratio > 0) InsightTone.ATTENTION else InsightTone.POSITIVE,
                 ),
             )
@@ -445,8 +449,8 @@ fun insights(data: FinanceData, period: Period): List<Insight> {
             result.add(
                 Insight(
                     id = "income-change",
-                    text = "Gəlir əvvəlki dövrə nisbətən ${money(abs(delta))} " +
-                        (if (delta > 0) "çoxdur" else "azdır") + ".",
+                    text = "Gəlir ${money(abs(delta))} " +
+                        (if (delta > 0) "artıb" else "azalıb") + ".",
                     tone = if (delta > 0) InsightTone.POSITIVE else InsightTone.ATTENTION,
                 ),
             )
@@ -463,7 +467,7 @@ fun insights(data: FinanceData, period: Period): List<Insight> {
                 id = "top-category",
                 text = if (changedLead) {
                     "Ən böyük xərc indi ${top.category} — ${money(top.actual)}; " +
-                        "əvvəlki dövrdə ${priorTop.category} idi."
+                        "əvvəl ${priorTop.category} idi."
                 } else {
                     "Ən böyük xərc ${top.category} — ${money(top.actual)}, " +
                         "bütün xərclərin ${percent(top.share)}-i."
@@ -487,8 +491,8 @@ fun insights(data: FinanceData, period: Period): List<Insight> {
         result.add(
             Insight(
                 id = "mover-${row.category}",
-                text = "${row.category} xərcləri əvvəlki dövrə nisbətən ${percent(abs(ratio))} " +
-                    (if (ratio > 0) "çoxdur" else "azdır") +
+                text = "${row.category} xərcləri ${percent(abs(ratio))} " +
+                    (if (ratio > 0) "artıb" else "azalıb") +
                     " (${money(row.actual)} / ${money(row.previous)}).",
                 tone = if (ratio > 0) InsightTone.ATTENTION else InsightTone.POSITIVE,
             ),
